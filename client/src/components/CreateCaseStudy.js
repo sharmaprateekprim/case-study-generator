@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import MultiSelect from './MultiSelect';
 
 const CreateCaseStudy = () => {
+  const { draftId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [isIncorporatingFeedback, setIsIncorporatingFeedback] = useState(false);
+  const [originalCaseStudy, setOriginalCaseStudy] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     duration: '',
@@ -17,11 +24,11 @@ const CreateCaseStudy = () => {
     costReduction: '',
     timeSavings: '',
     userSatisfaction: '',
-    customMetrics: [{ name: '', value: '' }],
+    customMetrics: [],
     lessonsLearned: '',
     conclusion: '',
     executiveSummary: '',
-    implementationWorkstreams: [{ name: '', description: '', diagrams: [] }],
+    implementationWorkstreams: [],
     labels: {
       client: [],
       sector: [],
@@ -30,25 +37,217 @@ const CreateCaseStudy = () => {
       objective: [],
       solution: [],
       methodology: [],
-      region: []
+      region: [],
+      Circles: [] // Add Circles category
     }
   });
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
+  const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState(draftId);
   const [error, setError] = useState('');
   const [generatedCaseStudy, setGeneratedCaseStudy] = useState(null);
   const [availableLabels, setAvailableLabels] = useState({});
   const [labelsLoading, setLabelsLoading] = useState(true);
 
   useEffect(() => {
-    fetchLabels();
-  }, []);
+    const urlParams = new URLSearchParams(location.search);
+    const incorporateFeedbackParam = urlParams.get('incorporateFeedback');
+    
+    if (draftId) {
+      fetchLabels();
+      loadDraft();
+    } else if (incorporateFeedbackParam) {
+      setIsIncorporatingFeedback(true);
+      fetchLabels();
+      loadCaseStudyForFeedback(incorporateFeedbackParam);
+    } else {
+      fetchLabels();
+    }
+  }, [draftId, location.search]);
+
+  const loadCaseStudyForFeedback = async (folderName) => {
+    try {
+      console.log('Loading case study for feedback:', folderName);
+      const response = await axios.get(`/api/case-studies/${folderName}`);
+      console.log('API response:', response.data);
+      
+      if (response.data.success) {
+        const caseStudy = response.data.caseStudy;
+        console.log('Case study data:', caseStudy);
+        
+        // Ensure folderName is set for later use in submission
+        const caseStudyWithFolderName = {
+          ...caseStudy,
+          folderName: caseStudy.folderName || folderName // Use existing or fallback to parameter
+        };
+        
+        setOriginalCaseStudy(caseStudyWithFolderName);
+        
+        // Pre-populate form with existing data
+        if (caseStudy.questionnaire) {
+          const q = caseStudy.questionnaire;
+          setFormData({
+            title: q.basicInfo?.title || '',
+            pointOfContact: q.basicInfo?.pointOfContact || '',
+            duration: q.basicInfo?.duration || '',
+            teamSize: q.basicInfo?.teamSize || '',
+            customer: q.basicInfo?.customer || '',
+            industry: q.basicInfo?.industry || '',
+            useCase: q.basicInfo?.useCase || '',
+            overview: q.content?.overview || '',
+            executiveSummary: q.content?.executiveSummary || '',
+            challenge: q.content?.challenge || '',
+            solution: q.content?.solution || '',
+            implementation: q.content?.implementation || '',
+            results: q.content?.results || '',
+            lessonsLearned: q.content?.lessonsLearned || '',
+            conclusion: q.content?.conclusion || '',
+            costSavings: q.metrics?.costSavings || '',
+            costReduction: q.metrics?.costReduction || '',
+            performanceImprovement: q.metrics?.performanceImprovement || '',
+            timeSavings: q.metrics?.timeSavings || '',
+            userSatisfaction: q.metrics?.userSatisfaction || '',
+            otherBenefits: q.metrics?.otherBenefits || '',
+            awsServices: q.technical?.awsServices || [],
+            architecture: q.technical?.architecture || '',
+            technologies: q.technical?.technologies || '',
+            architectureDiagrams: caseStudy.architectureDiagrams || [],
+            customMetrics: caseStudy.customMetrics || [{ name: '', value: '' }],
+            implementationWorkstreams: caseStudy.implementationWorkstreams || q.content?.implementationWorkstreams || [],
+            labels: {} // Initialize labels properly
+          });
+          
+          // Handle labels - convert old format to new format if needed
+          const processedLabels = {
+            client: [],
+            sector: [],
+            projectType: [],
+            technology: [],
+            objective: [],
+            solution: [],
+            methodology: [],
+            region: [],
+            Circles: [] // Add Circles category
+          };
+          
+          if (caseStudy.labels && Array.isArray(caseStudy.labels)) {
+            // Old format: array of strings, put them in client category as selected values
+            processedLabels.client = caseStudy.labels;
+          } else if (caseStudy.labels && typeof caseStudy.labels === 'object') {
+            // New format: already categorized, preserve the selected values
+            Object.keys(processedLabels).forEach(category => {
+              if (caseStudy.labels[category] && Array.isArray(caseStudy.labels[category])) {
+                processedLabels[category] = caseStudy.labels[category];
+              }
+            });
+          }
+          
+          console.log('Original labels:', caseStudy.labels);
+          console.log('Processed labels for form:', processedLabels);
+          
+          // Update formData with processed labels
+          setFormData(prev => ({
+            ...prev,
+            labels: processedLabels
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error loading case study for feedback:', err);
+      setError('Failed to load case study for editing');
+    } finally {
+      setLabelsLoading(false);
+    }
+  };
+
+  const loadDraft = async () => {
+    try {
+      setIsEditingDraft(true);
+      const response = await axios.get(`/api/case-studies/drafts/${draftId}`);
+      if (response.data.success) {
+        const draftData = response.data.draft.data;
+        console.log('Draft data loaded:', draftData);
+        
+        // Set form data with proper defaults
+        setFormData({
+          title: draftData.title || '',
+          duration: draftData.duration || draftData.data?.duration || '',
+          teamSize: draftData.teamSize || draftData.data?.teamSize || '',
+          pointOfContact: draftData.pointOfContact || draftData.data?.pointOfContact || '',
+          overview: draftData.overview || '',
+          challenge: draftData.challenge || '',
+          solution: draftData.solution || '',
+          architectureDiagrams: draftData.architectureDiagrams || draftData.data?.architectureDiagrams || [],
+          results: draftData.results || '',
+          performanceImprovement: draftData.performanceImprovement || '',
+          costReduction: draftData.costReduction || '',
+          timeSavings: draftData.timeSavings || '',
+          userSatisfaction: draftData.userSatisfaction || '',
+          customMetrics: (() => {
+            let metrics = draftData.customMetrics || draftData.data?.customMetrics;
+            if (typeof metrics === 'string') {
+              try {
+                metrics = JSON.parse(metrics);
+              } catch (e) {
+                console.error('Error parsing customMetrics:', e);
+                metrics = [{ name: '', value: '' }];
+              }
+            }
+            return Array.isArray(metrics) && metrics.length > 0 ? metrics : [];
+          })(),
+          lessonsLearned: draftData.lessonsLearned || '',
+          conclusion: draftData.conclusion || '',
+          executiveSummary: draftData.executiveSummary || draftData.data?.executiveSummary || '',
+          implementationWorkstreams: draftData.implementationWorkstreams || [],
+          labels: (() => {
+            let labels = draftData.labels || draftData.data?.labels;
+            if (typeof labels === 'string') {
+              try {
+                labels = JSON.parse(labels);
+              } catch (e) {
+                console.error('Error parsing labels:', e);
+                labels = {
+                  client: [],
+                  sector: [],
+                  projectType: [],
+                  technology: [],
+                  objective: [],
+                  solution: [],
+                  methodology: [],
+                  region: []
+                };
+              }
+            }
+            return labels || {
+              client: [],
+              sector: [],
+              projectType: [],
+              technology: [],
+              objective: [],
+              solution: [],
+              methodology: [],
+              region: []
+            };
+          })()
+        });
+        
+        console.log('Labels from draft:', draftData.labels);
+        console.log('Implementation workstreams from draft:', draftData.implementationWorkstreams);
+        
+        setSuccess('Draft loaded successfully');
+      }
+    } catch (err) {
+      console.error('Error loading draft:', err);
+      setError('Failed to load draft');
+    }
+  };
 
   const fetchLabels = async () => {
     try {
       setLabelsLoading(true);
-      const response = await axios.get('/api/labels');
+      const response = await axios.get('/api/case-studies/labels');
       if (response.data.success) {
         setAvailableLabels(response.data.labels);
       }
@@ -60,6 +259,51 @@ const CreateCaseStudy = () => {
     }
   };
 
+  const addArchitectureDiagram = () => {
+    setFormData(prev => ({
+      ...prev,
+      architectureDiagrams: [...prev.architectureDiagrams, { name: '', description: '', diagrams: [] }]
+    }));
+  };
+
+  const removeArchitectureDiagram = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      architectureDiagrams: prev.architectureDiagrams.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleArchitectureDiagramChange = (index, field, value) => {
+    setFormData(prev => {
+      const newArchitectureDiagrams = [...prev.architectureDiagrams];
+      newArchitectureDiagrams[index] = { ...newArchitectureDiagrams[index], [field]: value };
+      return { ...prev, architectureDiagrams: newArchitectureDiagrams };
+    });
+  };
+
+  const handleArchitectureDiagramFileUpload = (index, event) => {
+    const files = Array.from(event.target.files);
+    setFormData(prev => {
+      const newArchitectureDiagrams = [...prev.architectureDiagrams];
+      newArchitectureDiagrams[index] = { 
+        ...newArchitectureDiagrams[index], 
+        diagrams: [...(newArchitectureDiagrams[index].diagrams || []), ...files] 
+      };
+      return { ...prev, architectureDiagrams: newArchitectureDiagrams };
+    });
+  };
+
+  const removeArchitectureDiagramFile = (archIndex, fileIndex) => {
+    setFormData(prev => {
+      const newArchitectureDiagrams = [...prev.architectureDiagrams];
+      newArchitectureDiagrams[archIndex] = {
+        ...newArchitectureDiagrams[archIndex],
+        diagrams: newArchitectureDiagrams[archIndex].diagrams.filter((_, i) => i !== fileIndex)
+      };
+      return { ...prev, architectureDiagrams: newArchitectureDiagrams };
+    });
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -69,6 +313,7 @@ const CreateCaseStudy = () => {
   };
 
   const handleLabelChange = (category, selectedValues) => {
+    console.log('Label change:', category, selectedValues);
     setFormData(prev => ({
       ...prev,
       labels: {
@@ -76,6 +321,10 @@ const CreateCaseStudy = () => {
         [category]: selectedValues
       }
     }));
+    console.log('Updated formData.labels will be:', {
+      ...formData.labels,
+      [category]: selectedValues
+    });
   };
 
   const handleFileUpload = (e) => {
@@ -120,13 +369,11 @@ const CreateCaseStudy = () => {
   };
 
   const removeWorkstream = (index) => {
-    if (formData.implementationWorkstreams.length > 1) {
-      const newWorkstreams = formData.implementationWorkstreams.filter((_, i) => i !== index);
-      setFormData(prev => ({
-        ...prev,
-        implementationWorkstreams: newWorkstreams
-      }));
-    }
+    const newWorkstreams = formData.implementationWorkstreams.filter((_, i) => i !== index);
+    setFormData(prev => ({
+      ...prev,
+      implementationWorkstreams: newWorkstreams
+    }));
   };
 
   const handleWorkstreamFileUpload = (workstreamIndex, e) => {
@@ -161,8 +408,9 @@ const CreateCaseStudy = () => {
   };
 
   const handleCustomMetricChange = (index, field, value) => {
-    const newMetrics = [...formData.customMetrics];
-    newMetrics[index][field] = value;
+    const currentMetrics = Array.isArray(formData.customMetrics) ? formData.customMetrics : [];
+    const newMetrics = [...currentMetrics];
+    newMetrics[index] = { ...newMetrics[index], [field]: value };
     setFormData(prev => ({
       ...prev,
       customMetrics: newMetrics
@@ -170,20 +418,26 @@ const CreateCaseStudy = () => {
   };
 
   const addCustomMetric = () => {
-    setFormData(prev => ({
-      ...prev,
-      customMetrics: [...prev.customMetrics, { name: '', value: '' }]
-    }));
+    setFormData(prev => {
+      const currentMetrics = Array.isArray(prev.customMetrics) ? prev.customMetrics : [];
+      return {
+        ...prev,
+        customMetrics: [...currentMetrics, { name: '', value: '' }]
+      };
+    });
   };
 
   const removeCustomMetric = (index) => {
-    if (formData.customMetrics.length > 1) {
-      const newMetrics = formData.customMetrics.filter((_, i) => i !== index);
-      setFormData(prev => ({
-        ...prev,
-        customMetrics: newMetrics
-      }));
-    }
+    const currentMetrics = Array.isArray(formData.customMetrics) ? formData.customMetrics : [];
+    const newMetrics = currentMetrics.filter((_, i) => i !== index);
+    setFormData(prev => ({
+      ...prev,
+      customMetrics: newMetrics
+    }));
+  };
+
+  const handleRedirectToManage = () => {
+    navigate('/manage');
   };
 
   const handleSubmit = async (e) => {
@@ -194,6 +448,7 @@ const CreateCaseStudy = () => {
 
     try {
       console.log('Submitting case study:', formData.title);
+      console.log('Form data labels before submission:', formData.labels);
       
       // Create FormData for file uploads
       const formDataToSend = new FormData();
@@ -206,15 +461,26 @@ const CreateCaseStudy = () => {
         }
         
         if (key === 'labels' || key === 'customMetrics') {
+          console.log(`Serializing ${key}:`, formData[key]);
           formDataToSend.append(key, JSON.stringify(formData[key]));
         } else {
           formDataToSend.append(key, formData[key]);
         }
       });
       
-      // Add architecture diagrams
-      formData.architectureDiagrams.forEach((file, index) => {
-        formDataToSend.append('architectureDiagrams', file);
+      // Add architecture diagrams data as JSON (for backend processing)
+      formDataToSend.append('architectureDiagrams', JSON.stringify(formData.architectureDiagrams));
+      
+      // Add architecture diagrams data and files
+      formData.architectureDiagrams.forEach((archDiagram, archIndex) => {
+        formDataToSend.append(`architecture-${archIndex}-name`, archDiagram.name);
+        formDataToSend.append(`architecture-${archIndex}-description`, archDiagram.description);
+        
+        if (archDiagram.diagrams && archDiagram.diagrams.length > 0) {
+          archDiagram.diagrams.forEach((file) => {
+            formDataToSend.append(`architecture-${archIndex}-diagrams`, file);
+          });
+        }
       });
       
       // Add workstreams data and files
@@ -236,7 +502,20 @@ const CreateCaseStudy = () => {
       }));
       formDataToSend.append('implementationWorkstreams', JSON.stringify(workstreamsWithoutFiles));
 
-      const response = await axios.post('/api/case-studies/create', formDataToSend, {
+      // Add draftId for submission
+      if (currentDraftId) {
+        formDataToSend.append('draftId', currentDraftId);
+      }
+
+      // Determine the endpoint based on workflow
+      let endpoint = '/api/case-studies/create';
+      
+      if (isIncorporatingFeedback && originalCaseStudy) {
+        // For incorporate feedback, we update existing and change status to under_review
+        endpoint = `/api/case-studies/${originalCaseStudy.folderName}/update-feedback`;
+      }
+
+      const response = await axios.post(endpoint, formDataToSend, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -244,8 +523,17 @@ const CreateCaseStudy = () => {
       });
 
       if (response.data.success) {
-        setSuccess(`Case study generated successfully! (Processing time: ${Math.round(response.data.processingTime / 1000)}s)`);
-        setGeneratedCaseStudy(response.data.caseStudy);
+        let successMessage = `Draft submitted for review! (Processing time: ${Math.round(response.data.processingTime / 1000)}s)`;
+        
+        setSuccess(successMessage);
+        setSubmittedSuccessfully(true);
+        
+        // Don't delete draft - it's now under review
+        // Navigate to manage page to see the draft under review
+        setTimeout(() => {
+          navigate('/manage');
+        }, 2000);
+        
         // Reset form
         setFormData({
           title: '',
@@ -261,11 +549,11 @@ const CreateCaseStudy = () => {
           costReduction: '',
           timeSavings: '',
           userSatisfaction: '',
-          customMetrics: [{ name: '', value: '' }],
+          customMetrics: [],
           lessonsLearned: '',
           conclusion: '',
           executiveSummary: '',
-          implementationWorkstreams: [{ name: '', description: '', diagrams: [] }],
+          implementationWorkstreams: [],
           labels: {
             client: [],
             sector: [],
@@ -304,6 +592,88 @@ const CreateCaseStudy = () => {
     }
   };
 
+  const handleSaveDraft = async () => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      console.log('Saving draft with files:', formData.title);
+      
+      // Create FormData for file uploads (same as main submission)
+      const formDataToSend = new FormData();
+      
+      // Add all text fields
+      Object.keys(formData).forEach(key => {
+        if (key === 'architectureDiagrams' || key === 'implementationWorkstreams') {
+          // Handle these separately
+          return;
+        }
+        
+        if (key === 'labels' || key === 'customMetrics') {
+          formDataToSend.append(key, JSON.stringify(formData[key]));
+        } else {
+          formDataToSend.append(key, formData[key]);
+        }
+      });
+      
+      // Add draft ID if editing
+      if (currentDraftId) {
+        formDataToSend.append('id', currentDraftId);
+      }
+      
+      // Add architecture diagrams data as JSON (for backend processing)
+      formDataToSend.append('architectureDiagrams', JSON.stringify(formData.architectureDiagrams));
+      
+      // Add architecture diagrams data and files
+      formData.architectureDiagrams.forEach((archDiagram, archIndex) => {
+        formDataToSend.append(`architecture-${archIndex}-name`, archDiagram.name);
+        formDataToSend.append(`architecture-${archIndex}-description`, archDiagram.description);
+        
+        if (archDiagram.diagrams && archDiagram.diagrams.length > 0) {
+          archDiagram.diagrams.forEach((file) => {
+            formDataToSend.append(`architecture-${archIndex}-diagrams`, file);
+          });
+        }
+      });
+      
+      // Add workstreams data as JSON (for backend processing)
+      formDataToSend.append('implementationWorkstreams', JSON.stringify(formData.implementationWorkstreams));
+      
+      // Add workstreams data and files
+      formData.implementationWorkstreams.forEach((workstream, workstreamIndex) => {
+        formDataToSend.append(`workstream-${workstreamIndex}-name`, workstream.name);
+        formDataToSend.append(`workstream-${workstreamIndex}-description`, workstream.description);
+        
+        if (workstream.diagrams && workstream.diagrams.length > 0) {
+          workstream.diagrams.forEach((file) => {
+            formDataToSend.append(`workstream-${workstreamIndex}-diagrams`, file);
+          });
+        }
+      });
+      
+      const response = await axios.post('/api/case-studies/save-draft', formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      if (response.data.success) {
+        setSuccess('Draft saved successfully!');
+        if (!isEditingDraft) {
+          // If this was a new draft, we can now edit it
+          setIsEditingDraft(true);
+          setCurrentDraftId(response.data.draft.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving draft:', err);
+      setError('Failed to save draft. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const downloadCaseStudy = async () => {
     if (generatedCaseStudy) {
       try {
@@ -328,9 +698,43 @@ const CreateCaseStudy = () => {
   };
 
   const renderLabelSection = (category, categoryLabels) => {
-    if (!categoryLabels || categoryLabels.length === 0) return null;
+    console.log(`Rendering label section for ${category}:`, categoryLabels);
+    
+    if (!categoryLabels || !Array.isArray(categoryLabels) || categoryLabels.length === 0) {
+      console.log(`No labels available for category ${category}`);
+      return null;
+    }
 
+    // Handle mixed formats - normalize all labels to object format
+    const normalizedLabels = categoryLabels.map(label => {
+      if (typeof label === 'string') {
+        return { name: label, client: label };
+      }
+      if (label && typeof label === 'object' && label.name) {
+        return { name: label.name, client: label.client || label.name };
+      }
+      return null;
+    }).filter(label => label !== null);
+
+    if (normalizedLabels.length === 0) return null;
+
+    // Extract display names for MultiSelect (it expects strings)
+    const displayOptions = normalizedLabels.map(label => {
+      if (typeof label === 'string') return label;
+      if (label && typeof label === 'object' && label.name) return label.name;
+      return null;
+    }).filter(option => option && typeof option === 'string' && option.trim() !== '');
+    
     const selectedValues = formData.labels[category] || [];
+    console.log(`Category ${category} - displayOptions:`, displayOptions);
+    console.log(`Category ${category} - selectedValues:`, selectedValues);
+    
+    // Ensure selectedValues are strings, not objects
+    const stringSelectedValues = selectedValues.map(val => {
+      if (typeof val === 'string') return val;
+      if (val && typeof val === 'object' && val.name) return val.name;
+      return val ? String(val) : '';
+    }).filter(val => val !== '');
 
     return (
       <div key={category} className="label-category">
@@ -339,9 +743,12 @@ const CreateCaseStudy = () => {
         </label>
         <MultiSelect
           id={`labels-${category}`}
-          options={categoryLabels}
-          value={selectedValues}
-          onChange={(selectedValues) => handleLabelChange(category, selectedValues)}
+          options={displayOptions}
+          value={stringSelectedValues}
+          onChange={(selectedValues) => {
+            console.log(`MultiSelect onChange for ${category}:`, selectedValues);
+            handleLabelChange(category, selectedValues);
+          }}
           placeholder={`Select ${category} labels...`}
           className="label-multi-select"
         />
@@ -351,24 +758,44 @@ const CreateCaseStudy = () => {
 
   return (
     <div className="form-container fade-in">
-      <h2 className="form-title">Create Case Study</h2>
+      <h2 className="form-title">
+        {isEditingDraft ? 'Edit Draft' : 
+         isIncorporatingFeedback ? 'Incorporate Feedback - New Version' : 
+         'Create Case Study'}
+      </h2>
       
       {error && <div className="error">{error}</div>}
-      {success && <div className="success">{success}</div>}
-
-      {generatedCaseStudy && (
-        <div className="preview-container" style={{ marginBottom: '2rem' }}>
-          <div className="preview-header">
-            <h3>Case Study Generated Successfully!</h3>
-            <p>{generatedCaseStudy.title}</p>
+      
+      {submittedSuccessfully ? (
+        <div className="success-container" style={{ textAlign: 'center', padding: '2rem' }}>
+          <div className="success" style={{ marginBottom: '1.5rem', fontSize: '1.2rem' }}>
+            {success}
           </div>
-          <div className="preview-actions">
-            <button onClick={downloadCaseStudy} className="btn btn-success">
-              Download Case Study
-            </button>
-          </div>
+          <button 
+            onClick={handleRedirectToManage} 
+            className="btn btn-primary"
+            style={{ padding: '0.75rem 2rem', fontSize: '1rem' }}
+          >
+            Go to Manage Page
+          </button>
         </div>
-      )}
+      ) : (
+        <>
+          {success && <div className="success">{success}</div>}
+
+          {generatedCaseStudy && (
+            <div className="preview-container" style={{ marginBottom: '2rem' }}>
+              <div className="preview-header">
+                <h3>Case Study Generated Successfully!</h3>
+                <p>{generatedCaseStudy.title}</p>
+              </div>
+              <div className="preview-actions">
+                <button onClick={downloadCaseStudy} className="btn btn-success">
+                  Download Case Study
+                </button>
+              </div>
+            </div>
+          )}
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
@@ -421,14 +848,16 @@ const CreateCaseStudy = () => {
         </div>
 
         {/* Labels Section */}
-        {!labelsLoading && Object.keys(availableLabels).length > 0 && (
+        {!labelsLoading && availableLabels && typeof availableLabels === 'object' && Object.keys(availableLabels).length > 0 && (
           <div className="form-group">
             <label>Case Study Labels</label>
             <p className="form-help">Select relevant labels to categorize this case study:</p>
             <div className="labels-container">
-              {Object.keys(availableLabels).map(category => 
+              {console.log('Rendering labels section with availableLabels:', availableLabels)}
+              {console.log('Current formData.labels:', formData.labels)}
+              {availableLabels && typeof availableLabels === 'object' && Object.keys(availableLabels).length > 0 && Object.keys(availableLabels).map(category => 
                 renderLabelSection(category, availableLabels[category])
-              )}
+              ).filter(section => section !== null)}
             </div>
           </div>
         )}
@@ -505,7 +934,7 @@ const CreateCaseStudy = () => {
         <div className="form-group">
           <label>Custom Metrics</label>
           <div className="custom-metrics-container">
-            {formData.customMetrics.map((metric, index) => (
+            {(Array.isArray(formData.customMetrics) ? formData.customMetrics : []).map((metric, index) => (
               <div key={index} className="custom-metric-row">
                 <input
                   type="text"
@@ -521,15 +950,13 @@ const CreateCaseStudy = () => {
                   onChange={(e) => handleCustomMetricChange(index, 'value', e.target.value)}
                   className="metric-value-input"
                 />
-                {formData.customMetrics.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeCustomMetric(index)}
-                    className="btn btn-danger btn-small"
-                  >
-                    Remove
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => removeCustomMetric(index)}
+                  className="btn btn-danger btn-small"
+                >
+                  Remove
+                </button>
               </div>
             ))}
             <button
@@ -580,37 +1007,90 @@ const CreateCaseStudy = () => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="architectureDiagrams">Architecture Diagrams</label>
-          <input
-            type="file"
-            id="architectureDiagrams"
-            multiple
-            accept="image/*,.pdf"
-            onChange={handleFileUpload}
-            className="file-input"
-          />
-          <div className="file-help">
-            Upload architecture diagrams, flowcharts, or technical drawings (Images: JPG, PNG, GIF, SVG or PDF files, max 5MB each)
-          </div>
-          
-          {formData.architectureDiagrams.length > 0 && (
-            <div className="uploaded-files">
-              <h4>Uploaded Files:</h4>
-              {formData.architectureDiagrams.map((file, index) => (
-                <div key={index} className="file-item">
-                  <span className="file-name">{file.name}</span>
-                  <span className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+          <label>Architecture Diagrams</label>
+          <div className="workstreams-container">
+            {formData.architectureDiagrams.map((archDiagram, index) => (
+              <div key={index} className="workstream-item">
+                <div className="workstream-header">
+                  <h4>Architecture {index + 1}</h4>
                   <button
                     type="button"
-                    onClick={() => removeFile(index)}
+                    onClick={() => removeArchitectureDiagram(index)}
                     className="btn btn-danger btn-small"
                   >
                     Remove
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="workstream-fields">
+                  <div className="form-group">
+                    <label htmlFor={`architecture-name-${index}`}>Architecture Name</label>
+                    <input
+                      type="text"
+                      id={`architecture-name-${index}`}
+                      value={archDiagram.name}
+                      onChange={(e) => handleArchitectureDiagramChange(index, 'name', e.target.value)}
+                      placeholder="e.g., System Architecture, Data Flow Diagram, Network Topology"
+                      className="workstream-name-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor={`architecture-description-${index}`}>Description</label>
+                    <textarea
+                      id={`architecture-description-${index}`}
+                      value={archDiagram.description}
+                      onChange={(e) => handleArchitectureDiagramChange(index, 'description', e.target.value)}
+                      placeholder="Describe what this architecture diagram shows and its purpose"
+                      rows="4"
+                      className="workstream-description-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor={`architecture-diagrams-${index}`}>Architecture Diagrams</label>
+                    <input
+                      type="file"
+                      id={`architecture-diagrams-${index}`}
+                      multiple
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleArchitectureDiagramFileUpload(index, e)}
+                      className="file-input"
+                    />
+                    <div className="file-help">
+                      Upload architecture diagrams, flowcharts, or technical drawings (Images: JPG, PNG, GIF, SVG or PDF files, max 5MB each)
+                    </div>
+                    
+                    {archDiagram.diagrams && archDiagram.diagrams.length > 0 && (
+                      <div className="uploaded-files">
+                        <h5>Uploaded Diagrams:</h5>
+                        {archDiagram.diagrams.filter(file => file && (file.name || file.filename)).map((file, fileIndex) => (
+                          <div key={fileIndex} className="file-item">
+                            <span className="file-name">{file.name || file.filename || 'Unknown file'}</span>
+                            <span className="file-size">
+                              {file.size ? `(${(file.size / 1024 / 1024).toFixed(2)} MB)` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeArchitectureDiagramFile(index, fileIndex)}
+                              className="btn btn-danger btn-small"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addArchitectureDiagram}
+              className="btn btn-secondary"
+              style={{ marginTop: '10px' }}
+            >
+              Add Architecture Diagram
+            </button>
+          </div>
         </div>
 
         <div className="form-group">
@@ -620,15 +1100,13 @@ const CreateCaseStudy = () => {
               <div key={index} className="workstream-item">
                 <div className="workstream-header">
                   <h4>Workstream {index + 1}</h4>
-                  {formData.implementationWorkstreams.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeWorkstream(index)}
-                      className="btn btn-danger btn-small"
-                    >
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeWorkstream(index)}
+                    className="btn btn-danger btn-small"
+                  >
+                    Remove
+                  </button>
                 </div>
                 <div className="workstream-fields">
                   <div className="form-group">
@@ -670,10 +1148,12 @@ const CreateCaseStudy = () => {
                     {workstream.diagrams && workstream.diagrams.length > 0 && (
                       <div className="uploaded-files">
                         <h5>Uploaded Diagrams:</h5>
-                        {workstream.diagrams.map((file, fileIndex) => (
+                        {workstream.diagrams.filter(file => file && (file.name || file.filename)).map((file, fileIndex) => (
                           <div key={fileIndex} className="file-item">
-                            <span className="file-name">{file.name}</span>
-                            <span className="file-size">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                            <span className="file-name">{file.name || file.filename || 'Unknown file'}</span>
+                            <span className="file-size">
+                              {file.size ? `(${(file.size / 1024 / 1024).toFixed(2)} MB)` : ''}
+                            </span>
                             <button
                               type="button"
                               onClick={() => removeWorkstreamFile(index, fileIndex)}
@@ -692,8 +1172,8 @@ const CreateCaseStudy = () => {
             <button
               type="button"
               onClick={addWorkstream}
-              className="btn btn-primary"
-              style={{ marginTop: '15px' }}
+              className="btn btn-secondary"
+              style={{ marginTop: '10px' }}
             >
               Add Workstream
             </button>
@@ -737,15 +1217,29 @@ const CreateCaseStudy = () => {
           />
         </div>
 
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={loading}
-          style={{ width: '100%', fontSize: '1.1rem', padding: '1rem' }}
-        >
-          {loading ? 'Generating Case Study...' : 'Create Case Study'}
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleSaveDraft}
+            disabled={loading || !formData.title.trim()}
+            style={{ flex: 1, fontSize: '1.1rem', padding: '1rem' }}
+          >
+            {loading ? 'Saving...' : 'Save as Draft'}
+          </button>
+          
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={loading}
+            style={{ flex: 1, fontSize: '1.1rem', padding: '1rem' }}
+          >
+            {loading ? 'Submitting...' : 'Submit for Review'}
+          </button>
+        </div>
       </form>
+        </>
+      )}
     </div>
   );
 };

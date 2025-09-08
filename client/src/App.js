@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import CreateCaseStudy from './components/CreateCaseStudy';
 import ViewCaseStudies from './components/ViewCaseStudies';
 import ManageCaseStudies from './components/ManageCaseStudies';
+import ReviewCaseStudies from './components/ReviewCaseStudies';
+import DraftReview from './components/DraftReview';
 import ManageLabels from './components/ManageLabels';
 import CaseStudyPreview from './components/CaseStudyPreview';
 import './App.css';
@@ -57,7 +59,10 @@ function App() {
           <Routes>
             <Route path="/" element={<ViewCaseStudies />} />
             <Route path="/create" element={<CreateCaseStudy />} />
+            <Route path="/edit-draft/:draftId" element={<CreateCaseStudy />} />
             <Route path="/manage" element={<ManageCaseStudies />} />
+            <Route path="/review/:folderName" element={<ReviewCaseStudies />} />
+            <Route path="/review-draft/:draftId" element={<DraftReview />} />
             <Route path="/manage-labels" element={<ManageLabels />} />
             <Route path="/preview/:id" element={<CaseStudyPreview />} />
           </Routes>

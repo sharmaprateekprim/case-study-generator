@@ -3,8 +3,18 @@ const fs = require('fs');
 const path = require('path');
 
 class DocxService {
-  async generateCaseStudyDocx(questionnaire, labels = {}, caseStudyFolder = '') {
+  async generateCaseStudyDocx(questionnaire, labels = {}, caseStudyFolder = '', architectureDiagrams = []) {
     console.log('Starting DOCX case study generation...');
+    
+    // Parse labels if they are stored as JSON string
+    if (typeof labels === 'string') {
+      try {
+        labels = JSON.parse(labels);
+      } catch (e) {
+        console.warn('Failed to parse labels JSON string:', e);
+        labels = {};
+      }
+    }
     
     // DEBUG: Log content being processed
     console.log('🔍 DEBUG - DOCX Service received content:');
@@ -257,21 +267,28 @@ class DocxService {
               })
             ] : []),
 
-            // Key Metrics
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: "Key Metrics",
-                  font: "Calibri",
-                  size: 28,
-                  bold: true,
-                  color: "000000"
-                }),
-              ],
-              style: "Heading1"
-            }),
-
-            ...this.createMetricsParagraphs(metrics),
+            // Key Metrics (only if metrics exist)
+            ...((() => {
+              const metricsContent = this.createMetricsParagraphs(metrics);
+              if (metricsContent.length > 0) {
+                return [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: "Key Metrics",
+                        font: "Calibri",
+                        size: 28,
+                        bold: true,
+                        color: "000000"
+                      }),
+                    ],
+                    style: "Heading1"
+                  }),
+                  ...metricsContent
+                ];
+              }
+              return [];
+            })()),
 
             // Overview
             ...(content.overview ? [
@@ -354,10 +371,10 @@ class DocxService {
             }),
 
             // Architecture Diagrams (embedded)
-            ...(await this.createArchitectureDiagramsParagraphs(content.architectureDiagrams, caseStudyFolder)),
+            ...(await this.createArchitectureDiagramsParagraphs(architectureDiagrams || content.architectureDiagrams, caseStudyFolder)),
 
             // Implementation Workstreams
-            ...(content.implementationWorkstreams && content.implementationWorkstreams.length > 0 && 
+            ...(content.implementationWorkstreams && Array.isArray(content.implementationWorkstreams) && content.implementationWorkstreams.length > 0 && 
                 content.implementationWorkstreams.some(w => w.name || w.description) ? [
               new Paragraph({
                 children: [
@@ -469,7 +486,7 @@ class DocxService {
   }
 
   async createArchitectureDiagramsParagraphs(architectureDiagrams, caseStudyFolder) {
-    if (!architectureDiagrams || architectureDiagrams.length === 0) {
+    if (!architectureDiagrams || !Array.isArray(architectureDiagrams) || architectureDiagrams.length === 0) {
       return [];
     }
 
@@ -477,75 +494,93 @@ class DocxService {
       new Paragraph({
         children: [
           new TextRun({
-            text: "Architecture Diagrams:",
+            text: "Architecture Diagrams",
             font: "Calibri",
-            size: 24,
+            size: 28,
             bold: true,
             color: "000000"
           }),
         ],
-        style: "Heading2"
+        style: "Heading1"
       })
     ];
 
-    for (const diagram of architectureDiagrams) {
+    // Process architecture sections (each section has name, description, and diagrams)
+    for (const archSection of architectureDiagrams.filter(section => section && typeof section === 'object')) {
       try {
-        // Add diagram title
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: diagram.name,
-                font: "Calibri",
-                size: 22,
-                bold: true,
-                color: "000000"
-              }),
-            ],
-            style: "Normal",
-            spacing: { before: 200, after: 100 }
-          })
-        );
-
-        // Try to embed the image if it's an image file
-        if (this.isImageFile(diagram.type)) {
-          const imageParagraph = await this.createImageParagraph(diagram, caseStudyFolder);
-          if (imageParagraph) {
-            paragraphs.push(imageParagraph);
-          }
-        } else {
-          // For non-image files (like PDFs), show a reference
+        // Add section name as heading
+        if (archSection.name) {
           paragraphs.push(
             new Paragraph({
               children: [
                 new TextRun({
-                  text: `📄 ${diagram.name} (${diagram.type})`,
+                  text: archSection.name,
                   font: "Calibri",
-                  size: 22,
-                  color: "000000",
-                  italics: true
+                  size: 24,
+                  bold: true,
+                  color: "000000"
                 }),
               ],
-              style: "Normal"
+              style: "Heading2",
+              spacing: { before: 300, after: 100 }
             })
           );
         }
+
+        // Add section description
+        if (archSection.description) {
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: archSection.description,
+                  font: "Calibri",
+                  size: 22,
+                  color: "000000"
+                }),
+              ],
+              style: "Normal",
+              spacing: { after: 200 }
+            })
+          );
+        }
+
+        // Process diagrams in this section
+        if (archSection.diagrams && Array.isArray(archSection.diagrams)) {
+          for (const diagram of archSection.diagrams) {
+            try {
+              // Try to embed the image if it's an image file
+              if (this.isImageFile(diagram.type)) {
+                const imageParagraph = await this.createImageParagraph(diagram, caseStudyFolder);
+                if (imageParagraph) {
+                  paragraphs.push(imageParagraph);
+                }
+              } else {
+                // For non-image files (like PDFs), show a reference
+                const diagramName = diagram.name || diagram.filename || 'Diagram';
+                paragraphs.push(
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `📄 ${diagramName} (${diagram.type || 'file'})`,
+                        font: "Calibri",
+                        size: 22,
+                        color: "000000",
+                        italics: true
+                      }),
+                    ],
+                    style: "Normal",
+                    spacing: { after: 100 }
+                  })
+                );
+              }
+            } catch (error) {
+              console.error('Error processing diagram:', error);
+            }
+          }
+        }
       } catch (error) {
-        console.warn(`Failed to embed diagram ${diagram.name}:`, error);
-        // Fallback to text reference
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: `• ${diagram.name} (${diagram.type})`,
-                font: "Calibri",
-                size: 22,
-                color: "000000"
-              }),
-            ],
-            style: "Normal"
-          })
-        );
+        console.error('Error processing architecture section:', error);
       }
     }
 
@@ -616,7 +651,23 @@ class DocxService {
     try {
       // For now, we'll download the image from S3 and embed it
       const s3Service = require('./s3Service');
-      const imageBuffer = await s3Service.downloadFile(caseStudyFolder, diagram.fileName);
+      
+      let imageBuffer;
+      
+      // Try to download using s3Key first (full path)
+      if (diagram.s3Key) {
+        try {
+          imageBuffer = await s3Service.downloadFileByKey(diagram.s3Key);
+        } catch (error) {
+          console.warn(`Failed to download using s3Key ${diagram.s3Key}:`, error);
+        }
+      }
+      
+      // Fallback to filename in case study folder
+      if (!imageBuffer) {
+        const fileName = diagram.name || diagram.filename || diagram.s3Key?.split('/').pop();
+        imageBuffer = await s3Service.downloadFile(caseStudyFolder, fileName);
+      }
       
       // Calculate optimal dimensions for document width
       // Note: We don't have access to original image dimensions here without additional processing
@@ -699,7 +750,8 @@ class DocxService {
       );
 
     // Add labels to the Background section if they exist
-    if (labels && Object.keys(labels).some(key => labels[key] && labels[key].length > 0)) {
+    if (labels && typeof labels === 'object' && Object.keys(labels).length > 0 && 
+        Object.keys(labels).some(key => labels[key] && Array.isArray(labels[key]) && labels[key].length > 0)) {
       // Add some spacing before labels
       paragraphs.push(
         new Paragraph({
@@ -753,7 +805,16 @@ class DocxService {
       });
 
     // Custom metrics
-    if (metrics.customMetrics && metrics.customMetrics.length > 0 && metrics.customMetrics.some(m => m.name && m.value)) {
+    let customMetrics = metrics.customMetrics;
+    if (typeof customMetrics === 'string') {
+      try {
+        customMetrics = JSON.parse(customMetrics);
+      } catch (e) {
+        customMetrics = [];
+      }
+    }
+    
+    if (customMetrics && Array.isArray(customMetrics) && customMetrics.length > 0 && customMetrics.some(m => m.name && m.value)) {
       paragraphs.push(
         new Paragraph({
           children: [
@@ -769,7 +830,7 @@ class DocxService {
         })
       );
 
-      metrics.customMetrics
+      customMetrics
         .filter(m => m.name && m.value)
         .forEach(metric => {
           paragraphs.push(
@@ -802,7 +863,7 @@ class DocxService {
     const paragraphs = [];
     
     Object.keys(labels).forEach(category => {
-      if (labels[category] && labels[category].length > 0) {
+      if (labels[category] && Array.isArray(labels[category]) && labels[category].length > 0) {
         // Create a single paragraph with category and labels on the same line
         const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
         const labelsList = labels[category].join(', ');
@@ -837,9 +898,17 @@ class DocxService {
   }
 
   async createWorkstreamsParagraphs(workstreams, caseStudyFolder) {
+    console.log('Processing workstreams:', workstreams);
+    
+    if (!workstreams || !Array.isArray(workstreams) || workstreams.length === 0) {
+      return [];
+    }
+    
     const paragraphs = [];
     
     for (const workstream of workstreams.filter(w => w.name || w.description)) {
+      console.log('Processing workstream:', workstream.name, 'Diagrams:', workstream.diagrams);
+      
       // Workstream name
       paragraphs.push(
         new Paragraph({
@@ -893,22 +962,25 @@ class DocxService {
 
         for (const diagram of workstream.diagrams) {
           try {
-            // Add diagram title
-            paragraphs.push(
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: diagram.name,
-                    font: "Calibri",
-                    size: 20,
-                    bold: true,
-                    color: "000000"
-                  }),
-                ],
-                style: "Normal",
-                spacing: { before: 150, after: 50 }
-              })
-            );
+            // Add diagram title (only if name exists and is not empty)
+            const diagramName = diagram.name || diagram.filename;
+            if (diagramName && diagramName.trim() !== '' && diagramName !== 'undefined') {
+              paragraphs.push(
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: diagramName,
+                      font: "Calibri",
+                      size: 20,
+                      bold: true,
+                      color: "000000"
+                    }),
+                  ],
+                  style: "Normal",
+                  spacing: { before: 150, after: 50 }
+                })
+              );
+            }
 
             // Try to embed the image if it's an image file
             if (this.isImageFile(diagram.type)) {
@@ -917,21 +989,25 @@ class DocxService {
                 paragraphs.push(imageParagraph);
               }
             } else {
-              // For non-image files (like PDFs), show a reference
-              paragraphs.push(
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: `📄 ${diagram.name} (${diagram.type})`,
-                      font: "Calibri",
-                      size: 20,
-                      color: "000000",
-                      italics: true
-                    }),
-                  ],
-                  style: "Normal"
-                })
-              );
+              // For non-image files (like PDFs), show a reference (only if name exists)
+              const diagramName = diagram.name || diagram.filename;
+              const diagramType = diagram.type || 'file';
+              if (diagramName && diagramName.trim() !== '' && diagramName !== 'undefined') {
+                paragraphs.push(
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `📄 ${diagramName} (${diagramType})`,
+                        font: "Calibri",
+                        size: 20,
+                        color: "000000",
+                        italics: true
+                      }),
+                    ],
+                    style: "Normal"
+                  })
+                );
+              }
             }
           } catch (error) {
             console.warn(`Failed to embed workstream diagram ${diagram.name}:`, error);
@@ -961,6 +1037,16 @@ class DocxService {
     console.log('Starting one-pager DOCX case study generation...');
     
     try {
+      // Parse labels if they are stored as JSON string
+      if (typeof labels === 'string') {
+        try {
+          labels = JSON.parse(labels);
+        } catch (e) {
+          console.warn('Failed to parse labels JSON string:', e);
+          labels = {};
+        }
+      }
+      
       // Extract data from questionnaire structure
       const basicInfo = questionnaire.basicInfo || {};
       const content = questionnaire.content || {};
@@ -1225,7 +1311,8 @@ class DocxService {
       );
 
     // Add labels to the Background section if they exist
-    if (labels && Object.keys(labels).some(key => labels[key] && labels[key].length > 0)) {
+    if (labels && typeof labels === 'object' && Object.keys(labels).length > 0 && 
+        Object.keys(labels).some(key => labels[key] && Array.isArray(labels[key]) && labels[key].length > 0)) {
       // Add some spacing before labels
       paragraphs.push(
         new Paragraph({
@@ -1246,7 +1333,7 @@ class DocxService {
     const paragraphs = [];
     
     Object.keys(labels).forEach(category => {
-      if (labels[category] && labels[category].length > 0) {
+      if (labels[category] && Array.isArray(labels[category]) && labels[category].length > 0) {
         // Create a single paragraph with category and labels on the same line
         const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
         const labelsList = labels[category].join(', ');
@@ -1279,6 +1366,9 @@ class DocxService {
   }
 
   createOnePagerCompactMetricsParagraphs(metrics) {
+    console.log('One-pager metrics received:', metrics);
+    console.log('Custom metrics:', metrics.customMetrics);
+    
     const standardMetrics = [
       { label: "Performance Improvement", value: metrics.performanceImprovement },
       { label: "Cost Reduction", value: metrics.costReduction },
@@ -1295,13 +1385,26 @@ class DocxService {
     );
     
     // Filter custom metrics as well
-    const validCustomMetrics = (metrics.customMetrics || []).filter(metric => 
+    let customMetrics = metrics.customMetrics;
+    if (typeof customMetrics === 'string') {
+      try {
+        customMetrics = JSON.parse(customMetrics);
+        console.log('Parsed custom metrics:', customMetrics);
+      } catch (e) {
+        console.warn('Failed to parse custom metrics JSON:', e);
+        customMetrics = [];
+      }
+    }
+    
+    const validCustomMetrics = (customMetrics || []).filter(metric => 
       metric && 
       metric.name && 
       metric.value && 
       metric.name.toString().trim() !== '' && 
       metric.value.toString().trim() !== ''
     );
+    
+    console.log('Valid custom metrics for one-pager:', validCustomMetrics);
     
     // If no valid metrics at all, don't show the section
     if (availableMetrics.length === 0 && validCustomMetrics.length === 0) {

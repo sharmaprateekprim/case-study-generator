@@ -271,7 +271,8 @@ const ViewCaseStudies = () => {
     Object.keys(labels).forEach(category => {
       if (labels[category] && labels[category].length > 0) {
         labels[category].forEach(label => {
-          allLabels.push({ category, label });
+          const labelText = typeof label === 'string' ? label : (label?.name || String(label));
+          allLabels.push({ category, label: labelText });
         });
       }
     });
@@ -423,9 +424,13 @@ const ViewCaseStudies = () => {
                     className="filter-select"
                   >
                     <option value="">All</option>
-                    {availableLabels[category]?.map(label => (
-                      <option key={label} value={label}>{label}</option>
-                    ))}
+                    {availableLabels[category]?.map(label => {
+                      const labelText = typeof label === 'string' ? label : (label?.name || String(label));
+                      const labelValue = typeof label === 'string' ? label : (label?.name || String(label));
+                      return (
+                        <option key={labelValue} value={labelValue}>{labelText}</option>
+                      );
+                    })}
                   </select>
                 </div>
               ))}
@@ -463,7 +468,10 @@ const ViewCaseStudies = () => {
               <div className="case-study-list">
             {caseStudies.map((caseStudy) => (
               <div key={caseStudy.folderName || caseStudy.id} className="case-study-item">
-                <h3 className="card-title">{caseStudy.title}</h3>
+                <h3 className="card-title">
+                  {caseStudy.title} 
+                  {caseStudy.version && <span style={{ fontSize: '0.8em', color: '#666', marginLeft: '0.5rem' }}>v{caseStudy.version.split('.')[0]}</span>}
+                </h3>
                 
                 <div className="card-content">
                   {/* Executive Summary Content */}

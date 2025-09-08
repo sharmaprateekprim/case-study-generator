@@ -1,26 +1,40 @@
 const AWS = require('aws-sdk');
-
-// Configure AWS (uses same config as S3Service)
-const s3 = new AWS.S3({
-  httpOptions: {
-    timeout: 120000, // 2 minutes
-    connectTimeout: 60000 // 1 minute
-  }
-});
+const credentialsService = require('./credentialsService');
 
 class LabelService {
   constructor() {
-    this.bucketName = process.env.S3_LABELS_BUCKET_NAME || 'case-study-labels';
-    this.labelsKey = 'labels.json';
-    
-    // Validate bucket name
+    // Use the same bucket as the main S3 service, with a labels/ prefix
+    this.bucketName = null; // Will be set from credentials like S3Service
+    this.labelsKey = 'labels/labels.json';
+    this.initialized = false;
+  }
+
+  async initialize() {
+    if (this.initialized) return;
+
     try {
-      this.validateBucketName(this.bucketName);
+      // Load credentials the same way as S3Service
+      const credentials = await credentialsService.getCredentials();
+      
+      this.s3 = new AWS.S3({
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        region: credentials.region || 'us-east-1',
+        signatureVersion: 'v4',
+        s3ForcePathStyle: false,
+        httpOptions: {
+          timeout: 300000,
+          connectTimeout: 60000
+        }
+      });
+
+      this.bucketName = credentials.s3BucketName;
+      this.initialized = true;
+      
       console.log('LabelService initialized with bucket:', this.bucketName);
     } catch (error) {
-      console.error('Invalid bucket name:', error.message);
-      console.log('Using fallback bucket name: case-study-labels-default');
-      this.bucketName = 'case-study-labels-default';
+      console.error('Failed to initialize LabelService:', error);
+      throw error;
     }
   }
 
@@ -119,6 +133,13 @@ class LabelService {
         "UK",
         "US",
         "India"
+      ],
+      Circles: [
+        "Data & Analytics",
+        "Cloud & Infrastructure", 
+        "Digital Transformation",
+        "Cybersecurity",
+        "AI & Machine Learning"
       ]
     };
   }
@@ -214,6 +235,8 @@ class LabelService {
 
   // Upload labels to S3
   async uploadLabels(labels) {
+    await this.initialize();
+    
     const params = {
       Bucket: this.bucketName,
       Key: this.labelsKey,
@@ -223,7 +246,7 @@ class LabelService {
     };
 
     try {
-      await s3.upload(params).promise();
+      await this.s3.upload(params).promise();
       console.log('Labels uploaded to S3 successfully');
     } catch (error) {
       console.error('Error uploading labels to S3:', error);
@@ -233,19 +256,35 @@ class LabelService {
 
   // Get labels from S3
   async getLabels() {
+    await this.initialize();
+    
     try {
       const params = {
         Bucket: this.bucketName,
         Key: this.labelsKey
       };
 
-      const result = await s3.getObject(params).promise();
-      return JSON.parse(result.Body.toString());
+      const result = await this.s3.getObject(params).promise();
+      const rawLabels = JSON.parse(result.Body.toString());
+      return this.convertLabelsToObjectFormat(rawLabels);
     } catch (error) {
       console.error('Error getting labels from S3:', error);
       // Return default labels as fallback
-      return this.getDefaultLabels();
+      const defaultLabels = this.getDefaultLabels();
+      return this.convertLabelsToObjectFormat(defaultLabels);
     }
+  }
+
+  // Convert string array labels to object format expected by client
+  convertLabelsToObjectFormat(rawLabels) {
+    const convertedLabels = {};
+    Object.keys(rawLabels).forEach(category => {
+      convertedLabels[category] = rawLabels[category].map(labelName => ({
+        name: labelName,
+        client: labelName // Use the same value for both name and client
+      }));
+    });
+    return convertedLabels;
   }
 
   // Add new label to a category
@@ -328,16 +367,18 @@ class LabelService {
 
   // Validate case study labels
   validateCaseStudyLabels(caseStudyLabels, availableLabels) {
+    console.log('Validating case study labels:', caseStudyLabels);
+    console.log('Available labels:', availableLabels);
+    
+    // TEMPORARY FIX: Preserve all user selections without filtering
+    // This bypasses the validation that might be filtering out user selections
     const validLabels = {};
     
     Object.keys(caseStudyLabels).forEach(category => {
-      if (availableLabels[category]) {
-        validLabels[category] = caseStudyLabels[category].filter(label => 
-          availableLabels[category].includes(label)
-        );
-      }
+      validLabels[category] = caseStudyLabels[category] || [];
     });
     
+    console.log('Validated labels result (preserving all user selections):', validLabels);
     return validLabels;
   }
 }

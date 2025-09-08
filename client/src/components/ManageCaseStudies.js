@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const PAGE_SIZE = 10; // Configurable page size
 
 const ManageCaseStudies = () => {
+  const navigate = useNavigate();
   const [caseStudies, setCaseStudies] = useState([]);
+  const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -22,7 +26,7 @@ const ManageCaseStudies = () => {
 
   useEffect(() => {
     fetchCaseStudies();
-  }, [currentPage]);
+  }, [currentPage, activeTab]);
 
   const fetchCaseStudies = async () => {
     try {
@@ -31,7 +35,9 @@ const ManageCaseStudies = () => {
       
       console.log('Fetching case studies for management...');
       
-      const response = await axios.get(`/api/case-studies?page=${currentPage}&limit=${PAGE_SIZE}`);
+      // Fetch case studies with all statuses for management view
+      const statusParam = activeTab === 'all' ? 'all' : activeTab;
+      const response = await axios.get(`/api/case-studies?page=${currentPage}&limit=${PAGE_SIZE}&status=${statusParam}`);
       
       console.log('Manage case studies response:', response.data);
       
@@ -40,12 +46,22 @@ const ManageCaseStudies = () => {
         setPagination(response.data.pagination || {});
         setTotalPages(response.data.pagination?.totalPages || 1);
         setTotalCount(response.data.pagination?.totalCount || 0);
-        
-        // Don't set error for empty results - this is a normal state
       } else {
         setError(response.data.error || 'Failed to fetch case studies');
         if (response.data.troubleshooting) {
           console.error('Troubleshooting info:', response.data.troubleshooting);
+        }
+      }
+
+      // Also fetch drafts
+      if (activeTab === 'all' || activeTab === 'draft') {
+        const draftsResponse = await axios.get('/api/case-studies/drafts');
+        if (draftsResponse.data.success) {
+          // Filter out approved and rejected drafts
+          const activeDrafts = (draftsResponse.data.drafts || []).filter(draft => 
+            draft.status !== 'approved' && draft.status !== 'rejected'
+          );
+          setDrafts(activeDrafts);
         }
       }
     } catch (err) {
@@ -62,6 +78,26 @@ const ManageCaseStudies = () => {
       }
       
       setCaseStudies([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateCaseStudyStatus = async (folderName, newStatus, reviewComments = '') => {
+    try {
+      setLoading(true);
+      const response = await axios.put(`/api/case-studies/${folderName}/status`, {
+        status: newStatus,
+        reviewComments
+      });
+      
+      if (response.data.success) {
+        setSuccess(`Case study status updated to ${newStatus}`);
+        fetchCaseStudies(); // Refresh the list
+      }
+    } catch (err) {
+      console.error('Error updating status:', err);
+      setError('Failed to update case study status');
     } finally {
       setLoading(false);
     }
@@ -207,6 +243,17 @@ const ManageCaseStudies = () => {
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
+  const getStatusColor = (status) => {
+    const colors = {
+      draft: '#6c757d',
+      under_review: '#ffc107',
+      approved: '#28a745',
+      rejected: '#dc3545',
+      published: '#007bff'
+    };
+    return colors[status] || '#6c757d';
+  };
+
   if (loading) {
     return <div className="loading">Loading case studies...</div>;
   }
@@ -217,6 +264,31 @@ const ManageCaseStudies = () => {
       
       {error && <div className="error">{error}</div>}
       {success && <div className="success">{success}</div>}
+
+      {/* Status Tabs */}
+      <div className="tabs" style={{ marginBottom: '2rem' }}>
+        {['all', 'draft', 'approved', 'rejected', 'published'].map(status => (
+          <button
+            key={status}
+            className={`tab ${activeTab === status ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab(status);
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              margin: '0 0.25rem',
+              border: '1px solid #ddd',
+              backgroundColor: activeTab === status ? '#007bff' : '#f8f9fa',
+              color: activeTab === status ? 'white' : '#333',
+              cursor: 'pointer',
+              borderRadius: '4px'
+            }}
+          >
+            {status.replace('_', ' ').toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       {deleteConfirm && (
         <div className="card" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeaa7' }}>
@@ -242,7 +314,93 @@ const ManageCaseStudies = () => {
         </div>
       )}
 
-      {caseStudies.length === 0 ? (
+      {/* Show drafts if in draft tab or all tab */}
+      {(activeTab === 'draft' || activeTab === 'all') && drafts.length > 0 && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <h3>Drafts</h3>
+          {drafts.map(draft => (
+            <div key={draft.id} className="case-study-item" style={{ 
+              padding: '1rem', 
+              border: '1px solid #ddd', 
+              borderRadius: '4px', 
+              marginBottom: '1rem',
+              backgroundColor: '#f8f9fa'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h4>{draft.title}</h4>
+                  <p style={{ color: '#666', fontSize: '0.9rem' }}>
+                    Last updated: {formatDate(draft.updatedAt)}
+                  </p>
+                  <span className="status-badge" style={{ 
+                    backgroundColor: getStatusColor(draft.status || 'draft'), 
+                    color: 'white', 
+                    padding: '0.25rem 0.5rem', 
+                    borderRadius: '4px', 
+                    fontSize: '0.8rem' 
+                  }}>
+                    {(draft.status || 'draft').replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  {draft.status === 'under_review' ? (
+                    <>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ marginRight: '0.5rem' }}
+                        onClick={() => navigate(`/review-draft/${draft.id}`)}
+                      >
+                        View
+                      </button>
+                      <button 
+                        className="btn btn-warning" 
+                        style={{ marginRight: '0.5rem' }}
+                        onClick={async () => {
+                          try {
+                            await axios.post(`/api/case-studies/drafts/${draft.id}/incorporate-feedback`);
+                            // Navigate to edit draft page
+                            window.location.href = `/edit-draft/${draft.id}`;
+                          } catch (err) {
+                            setError('Failed to incorporate feedback');
+                          }
+                        }}
+                      >
+                        Incorporate Feedback
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      className="btn btn-primary" 
+                      style={{ marginRight: '0.5rem' }}
+                      onClick={() => {
+                        window.location.href = `/edit-draft/${draft.id}`;
+                      }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  <button 
+                    className="btn btn-danger"
+                    onClick={async () => {
+                      try {
+                        await axios.delete(`/api/case-studies/drafts/${draft.id}`);
+                        setSuccess('Draft deleted successfully');
+                        fetchCaseStudies();
+                      } catch (err) {
+                        setError('Failed to delete draft');
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {caseStudies.length === 0 && drafts.length === 0 ? (
         <div className="card">
           <div className="card-content" style={{ textAlign: 'center', padding: '2rem' }}>
             <h3 style={{ color: '#666', marginBottom: '1rem' }}>No Case Studies to Manage</h3>
@@ -270,14 +428,74 @@ const ManageCaseStudies = () => {
               </div>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 className="card-title" style={{ margin: 0, flex: 1 }}>{caseStudy.title}</h3>
-                <button 
-                  onClick={() => setDeleteConfirm(caseStudy)} 
-                  className="btn btn-danger"
-                  style={{ marginLeft: '1rem' }}
-                >
-                  Delete
-                </button>
+                <div style={{ flex: 1 }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>
+                    {caseStudy.title}
+                    {caseStudy.version && <span style={{ fontSize: '0.8em', color: '#666', marginLeft: '0.5rem' }}>v{caseStudy.version.split('.')[0]}</span>}
+                  </h3>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <span className="status-badge" style={{ 
+                      backgroundColor: getStatusColor(caseStudy.status || 'published'), 
+                      color: 'white', 
+                      padding: '0.25rem 0.5rem', 
+                      borderRadius: '4px', 
+                      fontSize: '0.8rem' 
+                    }}>
+                      {(caseStudy.status || 'published').replace('_', ' ').toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  {/* Status Action Buttons */}
+                  {caseStudy.status === 'under_review' && (
+                    <>
+                      <button 
+                        className="btn btn-secondary"
+                        onClick={() => navigate(`/create?incorporateFeedback=${caseStudy.folderName}`)}
+                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                      >
+                        Incorporate Feedback
+                      </button>
+                      <button 
+                        className="btn btn-info"
+                        onClick={() => navigate(`/review/${caseStudy.folderName}`)}
+                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                      >
+                        View
+                      </button>
+                    </>
+                  )}
+                  
+                  {(caseStudy.status === 'approved' || caseStudy.status === 'rejected' || caseStudy.status === 'published') && (
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => navigate(`/review/${caseStudy.folderName}`)}
+                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      View Review History
+                    </button>
+                  )}
+                  
+                  {caseStudy.status === 'approved' && (
+                    <button 
+                      className="btn btn-primary"
+                      onClick={() => updateCaseStudyStatus(caseStudy.folderName, 'published')}
+                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      Publish
+                    </button>
+                  )}
+                  
+                  {/* Delete button for all case studies */}
+                  <button 
+                    onClick={() => setDeleteConfirm(caseStudy)} 
+                    className="btn btn-danger"
+                    style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </div>
           ))}

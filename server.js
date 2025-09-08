@@ -5,6 +5,7 @@ const path = require('path');
 require('dotenv').config();
 
 const caseStudyRoutes = require('./routes/caseStudyRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 const labelRoutes = require('./routes/labelRoutes');
 
 const app = express();
@@ -68,8 +69,14 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ success: true, message: 'Server is running', timestamp: new Date().toISOString() });
+});
+
 // Routes
 app.use('/api/case-studies', caseStudyRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/labels', labelRoutes);
 
 // Global error handler

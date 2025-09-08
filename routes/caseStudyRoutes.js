@@ -29,6 +29,7 @@ const upload = multer({
 
 // In-memory storage for case study data (in production, use a database)
 let caseStudies = [];
+let drafts = [];
 
 // Load demo case studies on startup
 const loadDemoData = () => {
@@ -59,8 +60,12 @@ const sanitizeTitle = (title) => {
 const validateCaseStudyData = (req, res, next) => {
   try {
     // Parse JSON fields from FormData
+    console.log('Raw req.body.labels:', req.body.labels);
+    console.log('Labels type before parsing:', typeof req.body.labels);
+    
     if (req.body.labels && typeof req.body.labels === 'string') {
       req.body.labels = JSON.parse(req.body.labels);
+      console.log('Parsed labels:', req.body.labels);
     }
     if (req.body.customMetrics && typeof req.body.customMetrics === 'string') {
       req.body.customMetrics = JSON.parse(req.body.customMetrics);
@@ -404,232 +409,1061 @@ router.delete('/labels/categories/:categoryName/values/:valueIndex', async (req,
 // ===== END LABEL MANAGEMENT ENDPOINTS =====
 
 // Create a new case study
-router.post('/create', upload.any(), validateCaseStudyData, async (req, res) => {
+router.post('/create', upload.any(), async (req, res) => {
   const startTime = Date.now();
-  console.log('Creating case study:', req.body.title);
-  console.log('Files uploaded:', req.files ? req.files.length : 0);
-  
-  // DEBUG: Log received form data
-  console.log('🔍 DEBUG - Received form data:');
-  console.log('  Title:', req.body.title);
-  console.log('  Executive Summary:', req.body.executiveSummary ? `${req.body.executiveSummary.length} chars` : 'EMPTY');
-  console.log('  Overview:', req.body.overview ? `${req.body.overview.length} chars` : 'EMPTY');
-  console.log('  Challenge:', req.body.challenge ? `${req.body.challenge.length} chars` : 'EMPTY');
-  console.log('  Solution:', req.body.solution ? `${req.body.solution.length} chars` : 'EMPTY');
-  console.log('  Results:', req.body.results ? `${req.body.results.length} chars` : 'EMPTY');
-  console.log('  Lessons Learned:', req.body.lessonsLearned ? `${req.body.lessonsLearned.length} chars` : 'EMPTY');
-  console.log('  Conclusion:', req.body.conclusion ? `${req.body.conclusion.length} chars` : 'EMPTY');
+  console.log('Submitting draft for review:', req.body.title);
   
   try {
-    const caseStudyData = req.body;
-    const caseStudyId = uuidv4();
-    
-    // Create sanitized folder name from title
-    const folderName = sanitizeTitle(caseStudyData.title);
-    const fileName = `${folderName}.docx`;
-    
-    // Validate and process labels if provided
-    let validatedLabels = {};
-    if (caseStudyData.labels) {
-      try {
-        const availableLabels = await labelService.getLabels();
-        validatedLabels = labelService.validateCaseStudyLabels(caseStudyData.labels, availableLabels);
-      } catch (error) {
-        console.warn('Error validating labels:', error);
-      }
-    }
-    
-    // Process uploaded files and organize them
-    let processedArchitectureDiagrams = [];
-    let processedWorkstreams = [];
-    
-    if (req.files && req.files.length > 0) {
-      console.log('Processing uploaded files...');
+    const draftData = req.body;
+    let draftId = draftData.draftId;
+    let existingDraft;
+
+    // If no draft ID provided, create a new draft first
+    if (!draftId) {
+      console.log('No draft ID provided, creating new draft first...');
       
-      // Parse the form data to understand which files belong to which field
-      const architectureFiles = req.files.filter(file => file.fieldname === 'architectureDiagrams');
-      const workstreamFiles = req.files.filter(file => file.fieldname.includes('workstream-') && file.fieldname.includes('-diagrams'));
+      // Generate new draft ID
+      draftId = uuidv4();
       
-      // Process architecture diagrams
-      for (const file of architectureFiles) {
-        const fileName = `architecture-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${file.originalname}`;
-        await s3Service.uploadFile(folderName, fileName, file.buffer, file.mimetype);
-        processedArchitectureDiagrams.push({
-          name: file.originalname,
-          fileName: fileName,
-          size: file.size,
-          type: file.mimetype
-        });
-      }
-      
-      // Process workstream diagrams
-      const workstreamDiagramsMap = {};
-      for (const file of workstreamFiles) {
-        // Extract workstream index from fieldname (e.g., 'workstream-0-diagrams')
-        const match = file.fieldname.match(/workstream-(\d+)-diagrams/);
-        if (match) {
-          const workstreamIndex = parseInt(match[1]);
-          const fileName = `workstream-${workstreamIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${file.originalname}`;
-          await s3Service.uploadFile(folderName, fileName, file.buffer, file.mimetype);
-          
-          if (!workstreamDiagramsMap[workstreamIndex]) {
-            workstreamDiagramsMap[workstreamIndex] = [];
-          }
-          workstreamDiagramsMap[workstreamIndex].push({
-            name: file.originalname,
-            fileName: fileName,
-            size: file.size,
-            type: file.mimetype
-          });
+      // Parse JSON fields from FormData (same as save-draft route)
+      if (draftData.labels && typeof draftData.labels === 'string') {
+        try {
+          draftData.labels = JSON.parse(draftData.labels);
+        } catch (e) {
+          console.warn('Could not parse labels JSON:', e);
+          draftData.labels = {};
         }
       }
       
-      // Update workstreams with processed diagrams
-      if (caseStudyData.implementationWorkstreams) {
-        processedWorkstreams = caseStudyData.implementationWorkstreams.map((workstream, index) => ({
-          ...workstream,
-          diagrams: workstreamDiagramsMap[index] || []
-        }));
+      // Process uploaded files (same logic as save-draft)
+      const processedFiles = {
+        architectureDiagrams: {},
+        workstreamDiagrams: {}
+      };
+
+      // Handle architecture diagrams
+      if (req.files) {
+        const architectureFiles = req.files.filter(file => file.fieldname.startsWith('architecture-') && file.fieldname.endsWith('-diagrams'));
+        console.log(`Found ${architectureFiles.length} architecture diagrams to upload`);
+        
+        for (const file of architectureFiles) {
+          try {
+            const match = file.fieldname.match(/architecture-(\d+)-diagrams/);
+            if (match) {
+              const archIndex = parseInt(match[1]);
+              
+              if (!processedFiles.architectureDiagrams[archIndex]) {
+                processedFiles.architectureDiagrams[archIndex] = [];
+              }
+              
+              const fileName = `arch-${archIndex}-${Date.now()}-${file.originalname}`;
+              const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+              
+              await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+              
+              processedFiles.architectureDiagrams[archIndex].push({
+                name: file.originalname,
+                filename: fileName,
+                s3Key: s3Key,
+                size: file.size,
+                type: file.mimetype
+              });
+            }
+          } catch (error) {
+            console.error('Error uploading architecture diagram:', error);
+          }
+        }
+
+        // Handle workstream diagrams
+        const workstreamFiles = req.files.filter(file => file.fieldname.startsWith('workstream-') && file.fieldname.endsWith('-diagrams'));
+        
+        for (const file of workstreamFiles) {
+          try {
+            const match = file.fieldname.match(/workstream-(\d+)-diagrams/);
+            if (match) {
+              const workstreamIndex = parseInt(match[1]);
+              
+              if (!processedFiles.workstreamDiagrams[workstreamIndex]) {
+                processedFiles.workstreamDiagrams[workstreamIndex] = [];
+              }
+              
+              const fileName = `workstream-${workstreamIndex}-${Date.now()}-${file.originalname}`;
+              const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+              
+              await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+              
+              processedFiles.workstreamDiagrams[workstreamIndex].push({
+                name: file.originalname,
+                filename: fileName,
+                s3Key: s3Key,
+                size: file.size,
+                type: file.mimetype
+              });
+            }
+          } catch (error) {
+            console.error('Error uploading workstream diagram:', error);
+          }
+        }
       }
+
+      // Build architecture diagrams structure
+      let architectureDiagrams = [];
+      if (draftData.architectureDiagrams) {
+        try {
+          architectureDiagrams = typeof draftData.architectureDiagrams === 'string' 
+            ? JSON.parse(draftData.architectureDiagrams) 
+            : draftData.architectureDiagrams;
+        } catch (e) {
+          console.warn('Could not parse architecture diagrams JSON:', e);
+        }
+      }
+
+      // Add uploaded files to architecture diagrams
+      architectureDiagrams.forEach((archDiagram, archIndex) => {
+        if (processedFiles.architectureDiagrams[archIndex]) {
+          archDiagram.diagrams = [...(archDiagram.diagrams || []), ...processedFiles.architectureDiagrams[archIndex]];
+        }
+      });
+
+      // Build implementation workstreams structure
+      let implementationWorkstreams = [];
+      if (draftData.implementationWorkstreams) {
+        try {
+          implementationWorkstreams = typeof draftData.implementationWorkstreams === 'string'
+            ? JSON.parse(draftData.implementationWorkstreams)
+            : draftData.implementationWorkstreams;
+        } catch (e) {
+          console.warn('Could not parse implementation workstreams JSON:', e);
+        }
+      }
+
+      // Add uploaded files to workstreams
+      implementationWorkstreams.forEach((workstream, workstreamIndex) => {
+        if (processedFiles.workstreamDiagrams[workstreamIndex]) {
+          workstream.diagrams = [...(workstream.diagrams || []), ...processedFiles.workstreamDiagrams[workstreamIndex]];
+        }
+      });
+      
+      // Create new draft with the submitted data including processed files
+      const newDraft = {
+        id: draftId,
+        title: draftData.title,
+        status: 'draft',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        data: {
+          ...draftData,
+          architectureDiagrams: architectureDiagrams,
+          implementationWorkstreams: implementationWorkstreams,
+          customMetrics: draftData.customMetrics
+        }
+      };
+      
+      // Save the new draft
+      await s3Service.uploadDraft(draftId, newDraft);
+      existingDraft = newDraft;
+      
+      // Add to in-memory storage
+      drafts.push(existingDraft);
     } else {
-      // No files uploaded, use workstreams as-is
-      processedWorkstreams = caseStudyData.implementationWorkstreams || [];
+      // Get the existing draft from S3
+      existingDraft = await s3Service.getDraft(draftId);
+      if (!existingDraft) {
+        return res.status(404).json({
+          success: false,
+          error: 'Draft not found'
+        });
+      }
     }
 
-    // Prepare questionnaire data for DOCX generation
+    // Update draft status to 'under_review'
+    existingDraft.status = 'under_review';
+    existingDraft.submittedAt = new Date().toISOString();
+    existingDraft.updatedAt = new Date().toISOString();
+
+    // Save updated draft back to S3
+    await s3Service.uploadDraft(draftId, existingDraft);
+
+    // Update in-memory storage
+    const draftIndex = drafts.findIndex(d => d.id === draftId);
+    if (draftIndex !== -1) {
+      drafts[draftIndex] = existingDraft;
+    } else {
+      drafts.push(existingDraft);
+    }
+
+    const processingTime = Date.now() - startTime;
+    
+    res.json({
+      success: true,
+      message: 'Draft submitted for review successfully',
+      draft: existingDraft,
+      processingTime
+    });
+  } catch (error) {
+    console.error('Error submitting draft for review:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to submit draft for review'
+    });
+  }
+});
+// Save case study as draft
+router.post('/save-draft', upload.any(), async (req, res) => {
+  try {
+    console.log('=== SAVE DRAFT REQUEST ===');
+    console.log('Files received:', req.files ? req.files.length : 0);
+    if (req.files) {
+      req.files.forEach((file, index) => {
+        console.log(`File ${index}: ${file.fieldname} - ${file.originalname} (${file.size} bytes)`);
+      });
+    }
+    
+    const draftData = req.body;
+    let draftId = draftData.id;
+    
+    // If no ID provided, check for existing draft with same title
+    if (!draftId && draftData.title) {
+      try {
+        const existingDrafts = await s3Service.listDrafts();
+        const existingDraft = existingDrafts.find(draft => 
+          draft.title === draftData.title
+        );
+        if (existingDraft) {
+          draftId = existingDraft.id;
+        }
+      } catch (err) {
+        console.warn('Could not check for existing drafts:', err.message);
+      }
+    }
+    
+    // Generate new ID only if no existing draft found
+    if (!draftId) {
+      draftId = uuidv4();
+    }
+
+    // Process uploaded files
+    const processedFiles = {
+      architectureDiagrams: {},
+      workstreamDiagrams: {}
+    };
+
+    // Handle architecture diagrams dynamically
+    if (req.files) {
+      const architectureFiles = req.files.filter(file => file.fieldname.startsWith('architecture-') && file.fieldname.endsWith('-diagrams'));
+      console.log(`Found ${architectureFiles.length} architecture diagrams to upload`);
+      
+      for (const file of architectureFiles) {
+        try {
+          // Extract architecture index from fieldname (e.g., 'architecture-0-diagrams' -> 0)
+          const match = file.fieldname.match(/architecture-(\d+)-diagrams/);
+          if (match) {
+            const archIndex = parseInt(match[1]);
+            
+            if (!processedFiles.architectureDiagrams[archIndex]) {
+              processedFiles.architectureDiagrams[archIndex] = [];
+            }
+            
+            const fileName = `arch-${archIndex}-${Date.now()}-${file.originalname}`;
+            const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+            
+            console.log(`Uploading architecture diagram: ${fileName} to ${s3Key}`);
+            await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+            console.log(`Successfully uploaded architecture diagram: ${fileName}`);
+            
+            processedFiles.architectureDiagrams[archIndex].push({
+              name: file.originalname,
+              filename: fileName,
+              s3Key: s3Key,
+              size: file.size,
+              mimetype: file.mimetype
+            });
+          }
+        } catch (error) {
+          console.error('Error uploading architecture diagram:', error);
+          console.error('File details:', { fieldname: file.fieldname, name: file.originalname, size: file.size, mimetype: file.mimetype });
+        }
+      }
+    }
+
+    // Handle workstream diagrams dynamically
+    if (req.files) {
+      const workstreamFiles = req.files.filter(file => file.fieldname.startsWith('workstream-') && file.fieldname.endsWith('-diagrams'));
+      console.log(`Found ${workstreamFiles.length} workstream diagrams to upload`);
+      
+      for (const file of workstreamFiles) {
+        try {
+          // Extract workstream index from fieldname (e.g., 'workstream-0-diagrams' -> 0)
+          const match = file.fieldname.match(/workstream-(\d+)-diagrams/);
+          if (match) {
+            const workstreamIndex = parseInt(match[1]);
+            
+            if (!processedFiles.workstreamDiagrams[workstreamIndex]) {
+              processedFiles.workstreamDiagrams[workstreamIndex] = [];
+            }
+            
+            const fileName = `workstream-${workstreamIndex}-${Date.now()}-${file.originalname}`;
+            const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+            
+            console.log(`Uploading workstream diagram: ${fileName} to ${s3Key}`);
+            await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+            console.log(`Successfully uploaded workstream diagram: ${fileName}`);
+            
+            processedFiles.workstreamDiagrams[workstreamIndex].push({
+              name: file.originalname,
+              filename: fileName,
+              s3Key: s3Key,
+              size: file.size,
+              mimetype: file.mimetype
+            });
+          }
+        } catch (error) {
+          console.error('Error uploading workstream diagram:', error);
+          console.error('File details:', { fieldname: file.fieldname, name: file.originalname, size: file.size, mimetype: file.mimetype });
+        }
+      }
+    }
+
+    // Load existing diagrams from current draft
+    let existingArchitectureDiagrams = [];
+    if (draftId) {
+      try {
+        const currentDraft = await s3Service.getDraft(draftId);
+        if (currentDraft && currentDraft.architectureDiagrams) {
+          existingArchitectureDiagrams = currentDraft.architectureDiagrams;
+        }
+      } catch (e) {
+        console.warn('Could not load existing draft for diagram preservation:', e);
+      }
+    }
+
+    // Build architecture diagrams structure from form data
+    let architectureDiagrams = [];
+    
+    // First, try to get architecture diagrams from JSON data
+    if (draftData.architectureDiagrams) {
+      try {
+        if (typeof draftData.architectureDiagrams === 'string') {
+          architectureDiagrams = JSON.parse(draftData.architectureDiagrams);
+        } else {
+          architectureDiagrams = draftData.architectureDiagrams;
+        }
+      } catch (e) {
+        console.warn('Could not parse architecture diagrams JSON:', e);
+      }
+    }
+    
+    // If no JSON data, build from individual form fields
+    if (architectureDiagrams.length === 0) {
+      let archIndex = 0;
+      while (draftData[`architecture-${archIndex}-name`] !== undefined) {
+        const archDiagram = {
+          name: draftData[`architecture-${archIndex}-name`] || '',
+          description: draftData[`architecture-${archIndex}-description`] || '',
+          diagrams: []
+        };
+        architectureDiagrams.push(archDiagram);
+        archIndex++;
+      }
+    }
+    
+    // Add existing diagrams and new uploaded files to each architecture section
+    architectureDiagrams.forEach((archDiagram, archIndex) => {
+      // Preserve existing diagrams if they exist
+      if (existingArchitectureDiagrams[archIndex] && existingArchitectureDiagrams[archIndex].diagrams) {
+        archDiagram.diagrams = [...(existingArchitectureDiagrams[archIndex].diagrams || [])];
+      }
+      
+      // Add new uploaded diagrams for this architecture section
+      if (processedFiles.architectureDiagrams[archIndex]) {
+        archDiagram.diagrams = [...(archDiagram.diagrams || []), ...processedFiles.architectureDiagrams[archIndex]];
+      }
+    });
+
+    // Update draft data with structured architecture diagrams
+    draftData.architectureDiagrams = architectureDiagrams;
+    
+    console.log('Architecture diagrams processed:', architectureDiagrams.length);
+    
+    // Update workstream diagrams in implementation workstreams
+    if (draftData.implementationWorkstreams) {
+      try {
+        let workstreams;
+        // Handle both string and object formats
+        if (typeof draftData.implementationWorkstreams === 'string') {
+          workstreams = JSON.parse(draftData.implementationWorkstreams);
+        } else {
+          workstreams = draftData.implementationWorkstreams;
+        }
+        
+        workstreams.forEach((workstream, index) => {
+          if (processedFiles.workstreamDiagrams[index]) {
+            workstream.diagrams = [...(workstream.diagrams || []), ...processedFiles.workstreamDiagrams[index]];
+          }
+        });
+        draftData.implementationWorkstreams = workstreams;
+      } catch (e) {
+        console.warn('Could not parse implementation workstreams:', e);
+      }
+    }
+
+    const draft = {
+      id: draftId,
+      title: draftData.title || 'Untitled Draft',
+      data: draftData,
+      status: 'draft',
+      createdAt: draftData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Store draft in S3
+    await s3Service.uploadDraft(draftId, draft);
+    
+    // Also update in-memory storage for consistency
+    const existingIndex = drafts.findIndex(d => d.id === draftId);
+    if (existingIndex !== -1) {
+      drafts[existingIndex] = draft;
+    } else {
+      drafts.push(draft);
+    }
+    
+    res.json({
+      success: true,
+      draft: draft,
+      message: 'Draft saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to save draft'
+    });
+  }
+});
+
+// Get all drafts
+router.get('/drafts', async (req, res) => {
+  try {
+    const s3Drafts = await s3Service.listDrafts();
+    
+    // Update in-memory storage with S3 data
+    drafts.length = 0;
+    drafts.push(...s3Drafts);
+    
+    res.json({
+      success: true,
+      drafts: s3Drafts
+    });
+  } catch (error) {
+    console.error('Error fetching drafts:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch drafts'
+    });
+  }
+});
+
+// Get specific draft
+router.get('/drafts/:draftId', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    const draft = await s3Service.getDraft(draftId);
+    
+    if (!draft) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      draft: draft
+    });
+  } catch (error) {
+    console.error('Error fetching draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch draft'
+    });
+  }
+});
+
+// Delete draft
+router.delete('/drafts/:draftId', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    await s3Service.deleteDraft(draftId);
+    
+    res.json({
+      success: true,
+      message: 'Draft deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete draft'
+    });
+  }
+});
+
+// Get review comments for a draft
+router.get('/drafts/:draftId/comments', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    
+    const comments = await s3Service.getDraftReviewComments(draftId);
+    
+    res.json({
+      success: true,
+      comments: comments || []
+    });
+  } catch (error) {
+    console.error('Error fetching draft review comments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch draft review comments'
+    });
+  }
+});
+
+// Add a review comment to a draft
+router.post('/drafts/:draftId/comments', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    const { comment, author } = req.body;
+    
+    if (!comment || !comment.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Comment is required'
+      });
+    }
+    
+    const newComment = {
+      comment: comment.trim(),
+      author: author || 'Anonymous',
+      timestamp: new Date().toISOString()
+    };
+    
+    // Get existing comments
+    const existingComments = await s3Service.getDraftReviewComments(draftId) || [];
+    existingComments.push(newComment);
+    
+    // Save updated comments
+    await s3Service.saveDraftReviewComments(draftId, existingComments);
+    
+    res.json({
+      success: true,
+      comment: newComment,
+      message: 'Comment added successfully'
+    });
+  } catch (error) {
+    console.error('Error adding draft review comment:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to add comment'
+    });
+  }
+});
+
+// Approve draft - convert to approved case study
+router.post('/drafts/:draftId/approve', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    console.log(`Approving draft: ${draftId}`);
+    
+    // Get draft from S3
+    const draft = await s3Service.getDraft(draftId);
+    if (!draft) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    // Generate case study identifiers
+    const caseStudyId = uuidv4();
+    const folderName = sanitizeTitle(draft.title);
+    const fileName = `${folderName}.docx`;
+    
+    // Convert draft to case study
+    const caseStudy = {
+      id: caseStudyId,
+      folderName: folderName,
+      originalTitle: draft.title,
+      title: draft.title,
+      fileName: fileName,
+      status: 'approved',
+      createdAt: draft.createdAt,
+      updatedAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+      originalDraftId: draftId,
+      labels: draft.data.labels || {},
+      questionnaire: {
+        basicInfo: {
+          title: draft.data.title,
+          pointOfContact: draft.data.pointOfContact,
+          duration: draft.data.duration,
+          teamSize: draft.data.teamSize,
+          customer: draft.data.customer,
+          industry: draft.data.industry,
+          useCase: draft.data.useCase
+        },
+        content: {
+          overview: draft.data.overview,
+          challenge: draft.data.challenge,
+          solution: draft.data.solution,
+          implementation: draft.data.implementation,
+          results: draft.data.results,
+          lessonsLearned: draft.data.lessonsLearned,
+          conclusion: draft.data.conclusion,
+          executiveSummary: draft.data.executiveSummary,
+          implementationWorkstreams: draft.data.implementationWorkstreams || []
+        },
+        metrics: {
+          performanceImprovement: draft.data.performanceImprovement,
+          costReduction: draft.data.costReduction,
+          timeSavings: draft.data.timeSavings,
+          userSatisfaction: draft.data.userSatisfaction,
+          costSavings: draft.data.costSavings,
+          otherBenefits: draft.data.otherBenefits,
+          customMetrics: draft.data.customMetrics || []
+        },
+        technical: {
+          awsServices: draft.data.awsServices || [],
+          architecture: draft.data.architecture,
+          technologies: draft.data.technologies
+        }
+      },
+      architectureDiagrams: draft.data.architectureDiagrams || []
+    };
+    
+    // Add to in-memory storage
+    caseStudies.push(caseStudy);
+    
+    // Save metadata to S3
+    await s3Service.saveMetadata(folderName, caseStudy);
+    
+    // Generate case study document
+    const docBuffer = await docxService.generateCaseStudyDocx(caseStudy.questionnaire, caseStudy.labels, folderName, caseStudy.architectureDiagrams);
+    await s3Service.uploadFile(folderName, fileName, docBuffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    
+    // Generate one-pager
+    const onePagerBuffer = await docxService.generateOnePagerDocx(caseStudy.questionnaire, caseStudy.labels, folderName);
+    const onePagerFileName = `${folderName}-one-pager.docx`;
+    await s3Service.uploadFile(folderName, onePagerFileName, onePagerBuffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    
+    // Copy draft review comments to case study location
+    try {
+      const draftComments = await s3Service.getDraftReviewComments(draftId);
+      if (draftComments && draftComments.length > 0) {
+        await s3Service.saveReviewComments(folderName, draftComments);
+      }
+    } catch (commentError) {
+      console.warn('Could not copy draft comments:', commentError.message);
+    }
+    
+    // Update draft status to approved
+    try {
+      draft.status = 'approved';
+      draft.updatedAt = new Date().toISOString();
+      await s3Service.uploadDraft(draftId, draft);
+    } catch (draftUpdateError) {
+      console.warn('Could not update draft status:', draftUpdateError.message);
+    }
+    
+    // Invalidate cache to force refresh from S3
+    invalidateCache();
+    
+    res.json({
+      success: true,
+      message: 'Draft approved and converted to case study',
+      caseStudy: caseStudy
+    });
+  } catch (error) {
+    console.error('Error approving draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to approve draft'
+    });
+  }
+});
+
+// Reject draft - convert to rejected case study
+router.post('/drafts/:draftId/reject', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    console.log(`Rejecting draft: ${draftId}`);
+    
+    // Get draft from S3
+    const draft = await s3Service.getDraft(draftId);
+    if (!draft) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    // Generate case study identifiers
+    const caseStudyId = uuidv4();
+    const folderName = sanitizeTitle(draft.title);
+    const fileName = `${folderName}.docx`;
+    
+    // Convert draft to case study with rejected status
+    const caseStudy = {
+      id: caseStudyId,
+      folderName: folderName,
+      originalTitle: draft.title,
+      title: draft.title,
+      fileName: fileName,
+      status: 'rejected',
+      createdAt: draft.createdAt,
+      updatedAt: new Date().toISOString(),
+      rejectedAt: new Date().toISOString(),
+      originalDraftId: draftId,
+      labels: draft.data.labels || {},
+      questionnaire: {
+        basicInfo: {
+          title: draft.data.title,
+          pointOfContact: draft.data.pointOfContact,
+          duration: draft.data.duration,
+          teamSize: draft.data.teamSize,
+          customer: draft.data.customer,
+          industry: draft.data.industry,
+          useCase: draft.data.useCase
+        },
+        content: {
+          overview: draft.data.overview,
+          challenge: draft.data.challenge,
+          solution: draft.data.solution,
+          implementation: draft.data.implementation,
+          results: draft.data.results,
+          lessonsLearned: draft.data.lessonsLearned,
+          conclusion: draft.data.conclusion,
+          executiveSummary: draft.data.executiveSummary,
+          implementationWorkstreams: draft.data.implementationWorkstreams || []
+        },
+        metrics: {
+          performanceImprovement: draft.data.performanceImprovement,
+          costReduction: draft.data.costReduction,
+          timeSavings: draft.data.timeSavings,
+          userSatisfaction: draft.data.userSatisfaction,
+          costSavings: draft.data.costSavings,
+          otherBenefits: draft.data.otherBenefits,
+          customMetrics: draft.data.customMetrics || []
+        },
+        technical: {
+          awsServices: draft.data.awsServices || [],
+          architecture: draft.data.architecture,
+          technologies: draft.data.technologies
+        }
+      },
+      architectureDiagrams: draft.data.architectureDiagrams || []
+    };
+    
+    // Add to in-memory storage
+    caseStudies.push(caseStudy);
+    
+    // Save metadata to S3
+    await s3Service.saveMetadata(folderName, caseStudy);
+    
+    // Generate case study document
+    const docBuffer = await docxService.generateCaseStudyDocx(caseStudy.questionnaire, caseStudy.labels, folderName, caseStudy.architectureDiagrams);
+    await s3Service.uploadFile(folderName, fileName, docBuffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    
+    // Generate one-pager
+    const onePagerBuffer = await docxService.generateOnePagerDocx(caseStudy.questionnaire, caseStudy.labels, folderName);
+    const onePagerFileName = `${folderName}-one-pager.docx`;
+    await s3Service.uploadFile(folderName, onePagerFileName, onePagerBuffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    
+    // Copy draft review comments to case study location
+    try {
+      const draftComments = await s3Service.getDraftReviewComments(draftId);
+      if (draftComments && draftComments.length > 0) {
+        await s3Service.saveReviewComments(folderName, draftComments);
+      }
+    } catch (commentError) {
+      console.warn('Could not copy draft comments:', commentError.message);
+    }
+    
+    // Update draft status to rejected
+    try {
+      draft.status = 'rejected';
+      draft.updatedAt = new Date().toISOString();
+      await s3Service.uploadDraft(draftId, draft);
+    } catch (draftUpdateError) {
+      console.warn('Could not update draft status:', draftUpdateError.message);
+    }
+    
+    // Invalidate cache to force refresh from S3
+    invalidateCache();
+    
+    res.json({
+      success: true,
+      message: 'Draft rejected and converted to case study',
+      caseStudy: caseStudy
+    });
+  } catch (error) {
+    console.error('Error rejecting draft:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reject draft'
+    });
+  }
+});
+
+// Incorporate feedback - change draft status back to 'draft' for editing
+router.post('/drafts/:draftId/incorporate-feedback', async (req, res) => {
+  try {
+    const { draftId } = req.params;
+    console.log(`Incorporating feedback for draft: ${draftId}`);
+    
+    // Get draft from S3
+    const draft = await s3Service.getDraft(draftId);
+    if (!draft) {
+      return res.status(404).json({
+        success: false,
+        error: 'Draft not found'
+      });
+    }
+    
+    // Keep status as 'under_review' - don't change it
+    draft.updatedAt = new Date().toISOString();
+    
+    // Save updated draft back to S3
+    await s3Service.uploadDraft(draftId, draft);
+    
+    res.json({
+      success: true,
+      message: 'Draft ready for editing',
+      draft: draft
+    });
+  } catch (error) {
+    console.error('Error incorporating feedback:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to incorporate feedback'
+    });
+  }
+});
+
+// Update case study after incorporating feedback
+router.post('/:folderName/update-feedback', upload.fields([
+  { name: 'architectureDiagrams', maxCount: 10 },
+  { name: 'workstream-0-diagrams', maxCount: 10 },
+  { name: 'workstream-1-diagrams', maxCount: 10 },
+  { name: 'workstream-2-diagrams', maxCount: 10 },
+  { name: 'workstream-3-diagrams', maxCount: 10 },
+  { name: 'workstream-4-diagrams', maxCount: 10 }
+]), validateCaseStudyData, async (req, res) => {
+  try {
+    const { folderName } = req.params;
+    console.log(`Updating case study after feedback incorporation: ${folderName}`);
+    
+    // Find existing case study
+    const caseStudyIndex = caseStudies.findIndex(cs => cs.folderName === folderName);
+    if (caseStudyIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Case study not found'
+      });
+    }
+
+    const existingCaseStudy = caseStudies[caseStudyIndex];
+    
+    // Process the updated form data (same as create endpoint)
+    const caseStudyData = req.body;
+    console.log('Processing updated case study data:', caseStudyData.title);
+
+    // Parse JSON fields
+    if (caseStudyData.labels && typeof caseStudyData.labels === 'string') {
+      caseStudyData.labels = JSON.parse(caseStudyData.labels);
+      console.log('Parsed labels:', caseStudyData.labels);
+    }
+    if (caseStudyData.customMetrics && typeof caseStudyData.customMetrics === 'string') {
+      caseStudyData.customMetrics = JSON.parse(caseStudyData.customMetrics);
+    }
+    if (caseStudyData.implementationWorkstreams && typeof caseStudyData.implementationWorkstreams === 'string') {
+      caseStudyData.implementationWorkstreams = JSON.parse(caseStudyData.implementationWorkstreams);
+    }
+
+    // Create updated questionnaire structure
     const questionnaire = {
       basicInfo: {
         title: caseStudyData.title,
+        pointOfContact: caseStudyData.pointOfContact,
         duration: caseStudyData.duration,
         teamSize: caseStudyData.teamSize,
-        pointOfContact: caseStudyData.pointOfContact
+        customer: caseStudyData.customer,
+        industry: caseStudyData.industry,
+        useCase: caseStudyData.useCase
       },
       content: {
         overview: caseStudyData.overview,
         challenge: caseStudyData.challenge,
         solution: caseStudyData.solution,
-        architectureDiagrams: processedArchitectureDiagrams,
+        implementation: caseStudyData.implementation,
         results: caseStudyData.results,
-        implementationWorkstreams: processedWorkstreams.length > 0 ? processedWorkstreams : (caseStudyData.implementationWorkstreams || []),
         lessonsLearned: caseStudyData.lessonsLearned,
         conclusion: caseStudyData.conclusion,
-        executiveSummary: caseStudyData.executiveSummary
+        executiveSummary: caseStudyData.executiveSummary,
+        implementationWorkstreams: caseStudyData.implementationWorkstreams || []
       },
       metrics: {
         performanceImprovement: caseStudyData.performanceImprovement,
         costReduction: caseStudyData.costReduction,
         timeSavings: caseStudyData.timeSavings,
         userSatisfaction: caseStudyData.userSatisfaction,
+        costSavings: caseStudyData.costSavings,
+        otherBenefits: caseStudyData.otherBenefits,
         customMetrics: caseStudyData.customMetrics || []
+      },
+      technical: {
+        awsServices: caseStudyData.awsServices || [],
+        architecture: caseStudyData.architecture,
+        technologies: caseStudyData.technologies
       }
     };
-    
-    // DEBUG: Log questionnaire structure being sent to DOCX generation
-    console.log('🔍 DEBUG - Questionnaire structure for DOCX generation:');
-    console.log('  Basic Info:', questionnaire.basicInfo);
-    console.log('  Content fields:');
-    console.log('    Executive Summary:', questionnaire.content.executiveSummary ? `${questionnaire.content.executiveSummary.length} chars` : 'EMPTY');
-    console.log('    Overview:', questionnaire.content.overview ? `${questionnaire.content.overview.length} chars` : 'EMPTY');
-    console.log('    Challenge:', questionnaire.content.challenge ? `${questionnaire.content.challenge.length} chars` : 'EMPTY');
-    console.log('    Solution:', questionnaire.content.solution ? `${questionnaire.content.solution.length} chars` : 'EMPTY');
-    console.log('    Results:', questionnaire.content.results ? `${questionnaire.content.results.length} chars` : 'EMPTY');
-    console.log('    Lessons Learned:', questionnaire.content.lessonsLearned ? `${questionnaire.content.lessonsLearned.length} chars` : 'EMPTY');
-    console.log('    Conclusion:', questionnaire.content.conclusion ? `${questionnaire.content.conclusion.length} chars` : 'EMPTY');
-    console.log('  Metrics:', questionnaire.metrics);
-    
-    console.log('Generating DOCX case study...');
-    // Generate full DOCX with timeout handling
-    const docxBuffer = await Promise.race([
-      docxService.generateCaseStudyDocx(questionnaire, validatedLabels, folderName),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('DOCX generation timeout')), 120000) // 2 minutes
-      )
-    ]);
-    
-    console.log('Generating one-pager DOCX case study...');
-    // Generate one-pager DOCX
-    const onePagerFileName = `${folderName}-one-pager.docx`;
-    const onePagerBuffer = await Promise.race([
-      docxService.generateOnePagerDocx(questionnaire, validatedLabels, folderName),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('One-pager DOCX generation timeout')), 120000) // 2 minutes
-      )
-    ]);
-    
-    console.log('DOCX files generated, uploading to S3...');
-    // Upload full DOCX to S3 in case study folder
-    const s3Url = await s3Service.uploadDocx(folderName, fileName, docxBuffer);
-    
-    console.log('Uploading one-pager DOCX to S3...');
-    // Upload one-pager DOCX to S3
-    const onePagerUrl = await s3Service.uploadDocx(folderName, onePagerFileName, onePagerBuffer);
-    
-    // Store metadata to preserve original title and case study information
-    console.log('Uploading case study metadata to S3...');
-    const metadata = {
-      id: caseStudyId,
+
+    // Update the case study with new data (without versioning)
+    const updatedCaseStudy = {
+      ...existingCaseStudy,
       originalTitle: caseStudyData.title,
-      folderName: folderName,
-      fileName: fileName,
-      onePagerFileName: onePagerFileName,
-      createdAt: new Date().toISOString(),
-      labels: validatedLabels,
+      status: 'under_review',
+      updatedAt: new Date().toISOString(),
+      labels: caseStudyData.labels || {},
       questionnaire: questionnaire,
-      s3Url: s3Url,
-      onePagerUrl: onePagerUrl
+      customMetrics: caseStudyData.customMetrics || []
     };
-    await s3Service.uploadMetadata(folderName, metadata);
-    
-    // Store case study info locally
-    const caseStudy = {
-      id: caseStudyId,
-      title: caseStudyData.title,
-      folderName: folderName,
-      fileName: fileName,
-      createdAt: new Date().toISOString(),
-      labels: validatedLabels,
-      questionnaire: questionnaire,
-      s3Url: s3Url,
-      onePagerUrl: onePagerUrl,
-      onePagerFileName: onePagerFileName
-    };
-    
-    caseStudies.push(caseStudy);
-    
-    // Invalidate cache since we added a new case study
-    invalidateCache();
-    
-    const duration = Date.now() - startTime;
-    console.log(`Case study created successfully in ${duration}ms`);
+
+    // Update in memory
+    caseStudies[caseStudyIndex] = updatedCaseStudy;
+
+    // Update metadata in S3
+    try {
+      await s3Service.saveMetadata(folderName, updatedCaseStudy);
+      console.log('Updated metadata saved to S3');
+    } catch (metadataError) {
+      console.error('Could not update metadata:', metadataError.message);
+    }
     
     res.json({
       success: true,
-      caseStudy: caseStudy,
-      downloadUrl: `/api/case-studies/download/${folderName}/${fileName}`,
-      processingTime: duration
+      message: 'Case study updated and resubmitted for review',
+      caseStudy: updatedCaseStudy
     });
   } catch (error) {
-    const duration = Date.now() - startTime;
-    console.error(`Error creating case study after ${duration}ms:`, error);
+    console.error('Error updating case study after feedback:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update case study'
+    });
+  }
+});
+
+// Update case study status (for review workflow)
+router.put('/:folderName/status', async (req, res) => {
+  try {
+    const { folderName } = req.params;
+    const { status, reviewComments } = req.body;
     
-    let errorMessage = 'Failed to create case study';
-    let statusCode = 500;
+    console.log(`Updating status for case study: ${folderName} to ${status}`);
     
-    if (error.message.includes('timeout')) {
-      errorMessage = 'Case study generation timed out. Please try again with shorter content.';
-      statusCode = 408;
-    } else if (error.message.includes('AWS') || error.message.includes('S3')) {
-      errorMessage = 'Failed to save case study. Please check your AWS configuration.';
-      statusCode = 503;
-    } else if (error.message.includes('PDF')) {
-      errorMessage = 'Failed to generate PDF. Please try again.';
-      statusCode = 500;
+    const validStatuses = ['draft', 'under_review', 'approved', 'rejected', 'published'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status'
+      });
     }
     
-    res.status(statusCode).json({
+    // First, sync with S3 to ensure we have the latest data
+    const updatedCaseStudies = await syncCaseStudiesFromS3();
+    caseStudies.length = 0; // Clear the array
+    caseStudies.push(...updatedCaseStudies); // Update with fresh data
+    
+    const caseStudyIndex = caseStudies.findIndex(cs => cs.folderName === folderName);
+    console.log(`Found case study at index: ${caseStudyIndex}`);
+    
+    if (caseStudyIndex === -1) {
+      console.log(`Available case studies:`, caseStudies.map(cs => cs.folderName));
+      return res.status(404).json({
+        success: false,
+        error: 'Case study not found'
+      });
+    }
+    
+    // Prevent changing status of published case studies
+    if (caseStudies[caseStudyIndex].status === 'published') {
+      return res.status(400).json({
+        success: false,
+        error: 'Published case studies are immutable and cannot be modified'
+      });
+    }
+    
+    // Also check metadata to ensure it's not published
+    try {
+      const metadata = await s3Service.getMetadata(folderName);
+      if (metadata && metadata.status === 'published') {
+        return res.status(400).json({
+          success: false,
+          error: 'Published case studies are immutable and cannot be modified'
+        });
+      }
+    } catch (metadataError) {
+      console.warn('Could not check metadata status:', metadataError.message);
+    }
+    
+    caseStudies[caseStudyIndex].status = status;
+    caseStudies[caseStudyIndex].updatedAt = new Date().toISOString();
+    if (reviewComments) {
+      caseStudies[caseStudyIndex].reviewComments = reviewComments;
+    }
+    
+    // Update metadata in S3
+    try {
+      const metadata = await s3Service.getMetadata(folderName);
+      if (metadata) {
+        metadata.status = status;
+        metadata.updatedAt = new Date().toISOString();
+        
+        // Set version to 1.0 when publishing
+        if (status === 'published') {
+          metadata.version = '1.0';
+        }
+        
+        if (reviewComments) {
+          metadata.reviewComments = reviewComments;
+        }
+        await s3Service.uploadMetadata(folderName, metadata);
+      }
+    } catch (metadataError) {
+      console.warn('Could not update metadata:', metadataError.message);
+    }
+    
+    // Update local array
+    caseStudies[caseStudyIndex].status = status;
+    caseStudies[caseStudyIndex].updatedAt = new Date().toISOString();
+    
+    // Set version to 1.0 when publishing
+    if (status === 'published') {
+      caseStudies[caseStudyIndex].version = '1.0';
+    }
+    
+    invalidateCache();
+    
+    res.json({
+      success: true,
+      caseStudy: caseStudies[caseStudyIndex],
+      message: `Case study status updated to ${status}`
+    });
+  } catch (error) {
+    console.error('Error updating case study status:', error);
+    res.status(500).json({
       success: false,
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Failed to update status'
     });
   }
 });
@@ -710,7 +1544,8 @@ async function syncCaseStudiesFromS3() {
         size: s3File.size,
         createdAt: s3File.lastModified,
         labels: labels,
-        questionnaire: questionnaire
+        questionnaire: questionnaire,
+        status: metadata?.status || (s3File.lastModified < new Date('2025-09-01') ? 'published' : 'under_review')
       };
     }
     
@@ -742,7 +1577,8 @@ router.get('/', async (req, res) => {
       objective,
       solution,
       methodology,
-      region
+      region,
+      status = 'published' // Default to published only for browse functionality
     } = req.query;
 
     // Check cache first
@@ -801,6 +1637,14 @@ router.get('/', async (req, res) => {
       }
     });
 
+    // Status filter
+    if (status && status !== 'all') {
+      filteredCaseStudies = filteredCaseStudies.filter(cs => {
+        const caseStudyStatus = cs.status || 'under_review'; // Default to under_review
+        return caseStudyStatus === status;
+      });
+    }
+
     // Pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -848,128 +1692,6 @@ function invalidateCache() {
   console.log('Cache invalidated');
 }
 
-// Get all case studies with search and pagination
-router.get('/', async (req, res) => {
-  try {
-    console.log('Fetching case studies with query:', req.query);
-    
-    const { 
-      search = '', 
-      page = 1, 
-      limit = 10,
-      client,
-      sector,
-      projectType,
-      technology,
-      objective,
-      solution,
-      methodology,
-      region
-    } = req.query;
-
-    // Check cache first
-    const now = Date.now();
-    const cacheValid = caseStudiesCache.lastUpdated && 
-                      (now - caseStudiesCache.lastUpdated) < caseStudiesCache.ttl;
-
-    let allCaseStudies;
-    
-    if (cacheValid) {
-      console.log('Using cached case studies');
-      allCaseStudies = caseStudiesCache.data;
-    } else {
-      console.log('Cache expired, syncing with S3...');
-      allCaseStudies = await syncCaseStudiesFromS3();
-      
-      // Update cache
-      caseStudiesCache.data = allCaseStudies;
-      caseStudiesCache.lastUpdated = now;
-    }
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredCaseStudies = filteredCaseStudies.filter(cs => {
-        const searchableText = [
-          cs.title,
-          cs.questionnaire?.basicInfo?.pointOfContact,
-          cs.questionnaire?.content?.challenge,
-          cs.questionnaire?.content?.solution,
-          cs.questionnaire?.content?.results
-        ].join(' ').toLowerCase();
-
-        // Also search in labels
-        const labelText = Object.values(cs.labels || {})
-          .flat()
-          .join(' ')
-          .toLowerCase();
-
-        return searchableText.includes(searchLower) || labelText.includes(searchLower);
-      });
-    }
-
-    // Label filters
-    const labelFilters = { client, sector, projectType, technology, objective, solution, methodology, region };
-    Object.keys(labelFilters).forEach(filterKey => {
-      const filterValue = labelFilters[filterKey];
-      if (filterValue) {
-        filteredCaseStudies = filteredCaseStudies.filter(cs => {
-          const caseStudyLabels = cs.labels?.[filterKey] || [];
-          return caseStudyLabels.includes(filterValue);
-        });
-      }
-    });
-
-    // Sort by creation date (newest first)
-    filteredCaseStudies.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    // Apply pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const startIndex = (pageNum - 1) * limitNum;
-    const endIndex = startIndex + limitNum;
-    
-    const paginatedCaseStudies = filteredCaseStudies.slice(startIndex, endIndex);
-    
-    // Calculate pagination info
-    const totalCount = filteredCaseStudies.length;
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
-
-    res.json({
-      success: true,
-      caseStudies: paginatedCaseStudies,
-      pagination: {
-        currentPage: pageNum,
-        totalPages: totalPages,
-        totalCount: totalCount,
-        limit: limitNum,
-        hasNextPage: hasNextPage,
-        hasPrevPage: hasPrevPage
-      },
-      filters: {
-        search: search,
-        appliedFilters: Object.keys(labelFilters).reduce((acc, key) => {
-          if (labelFilters[key]) acc[key] = labelFilters[key];
-          return acc;
-        }, {})
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching case studies:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch case studies',
-      details: error.message,
-      troubleshooting: {
-        s3Connection: 'Check AWS credentials and S3 bucket configuration',
-        bucketAccess: 'Verify S3 bucket exists and is accessible',
-        fileFormat: 'Ensure case studies are in DOCX format',
-        folderStructure: 'Check case-studies/{folder-name}/ structure in S3'
-      }
-    });
-  }
-});
-
 // Update case study labels
 router.put('/:folderName/labels', async (req, res) => {
   try {
@@ -1007,8 +1729,13 @@ router.put('/:folderName/labels', async (req, res) => {
 });
 
 // Get a specific case study
-router.get('/:folderName', (req, res) => {
+router.get('/:folderName', async (req, res) => {
   try {
+    // Sync with S3 first
+    const updatedCaseStudies = await syncCaseStudiesFromS3();
+    caseStudies.length = 0;
+    caseStudies.push(...updatedCaseStudies);
+    
     const caseStudy = caseStudies.find(cs => cs.folderName === req.params.folderName);
     
     if (!caseStudy) {
@@ -1016,6 +1743,27 @@ router.get('/:folderName', (req, res) => {
         success: false,
         error: 'Case study not found'
       });
+    }
+    
+    // Also get the full metadata from S3 to ensure we have all details
+    try {
+      const metadata = await s3Service.getMetadata(req.params.folderName);
+      if (metadata) {
+        // Merge metadata with case study data
+        const enrichedCaseStudy = {
+          ...caseStudy,
+          ...metadata,
+          // Preserve the original questionnaire if it exists
+          questionnaire: caseStudy.questionnaire || metadata.questionnaire
+        };
+        
+        return res.json({
+          success: true,
+          caseStudy: enrichedCaseStudy
+        });
+      }
+    } catch (metadataError) {
+      console.warn('Could not get metadata for enrichment:', metadataError.message);
     }
     
     res.json({
@@ -1148,6 +1896,46 @@ router.get('/download-one-pager/:folderName/:fileName', async (req, res) => {
   }
 });
 
+// Get preview HTML for case study (auto-find DOCX file)
+router.get('/preview/:folderName', async (req, res) => {
+  try {
+    const { folderName } = req.params;
+    
+    // Find the main DOCX file (not one-pager)
+    const s3Files = await s3Service.listCaseStudyFiles(folderName);
+    const docxFile = s3Files.find(file => 
+      file.Key.endsWith('.docx') && 
+      !file.Key.includes('-one-pager')
+    );
+    
+    if (!docxFile) {
+      return res.status(404).send(`
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 2rem;">
+            <h2>Case Study Not Found</h2>
+            <p>No DOCX file found for case study: ${folderName}</p>
+          </body>
+        </html>
+      `);
+    }
+    
+    const fileName = docxFile.Key.split('/').pop();
+    
+    // Redirect to the existing preview endpoint
+    res.redirect(`/api/case-studies/preview/${folderName}/${fileName}`);
+  } catch (error) {
+    console.error('Error finding case study preview:', error);
+    res.status(500).send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; padding: 2rem;">
+          <h2>Error</h2>
+          <p>Failed to load case study preview</p>
+        </body>
+      </html>
+    `);
+  }
+});
+
 // Get preview HTML for case study
 router.get('/preview/:folderName/:fileName', async (req, res) => {
   try {
@@ -1159,7 +1947,102 @@ router.get('/preview/:folderName/:fileName', async (req, res) => {
     // Convert DOCX to HTML using mammoth
     const mammoth = require('mammoth');
     const result = await mammoth.convertToHtml({ buffer: docxBuffer });
-    const html = result.value;
+    let html = result.value;
+    
+    // Get case study metadata for additional sections
+    let labelsHtml = '';
+    let architectureDiagramsHtml = '';
+    
+    try {
+      const metadata = await s3Service.getMetadata(folderName);
+      if (metadata) {
+        // Build Labels HTML
+        if (metadata.labels) {
+          let labels = metadata.labels;
+          if (typeof labels === 'string') {
+            try {
+              labels = JSON.parse(labels);
+            } catch (e) {
+              labels = {};
+            }
+          }
+          
+          if (typeof labels === 'object' && Object.keys(labels).length > 0) {
+            labelsHtml = '<h2>Labels</h2>';
+            Object.keys(labels).forEach(category => {
+              if (Array.isArray(labels[category]) && labels[category].length > 0) {
+                const categoryName = category.charAt(0).toUpperCase() + category.slice(1);
+                labelsHtml += `<p><strong>${categoryName}:</strong> ${labels[category].join(', ')}</p>`;
+              }
+            });
+          }
+        }
+        
+        // Build Architecture Diagrams HTML
+        if (metadata.architectureDiagrams && Array.isArray(metadata.architectureDiagrams)) {
+          const validArchSections = metadata.architectureDiagrams.filter(archSection => 
+            archSection && typeof archSection === 'object' && archSection.diagrams && Array.isArray(archSection.diagrams)
+          );
+          
+          if (validArchSections.length > 0) {
+            architectureDiagramsHtml = '<h2>Architecture Diagrams</h2>';
+            validArchSections.forEach(archSection => {
+              if (archSection.name) {
+                architectureDiagramsHtml += `<h3>${archSection.name}</h3>`;
+              }
+              if (archSection.description) {
+                architectureDiagramsHtml += `<p>${archSection.description}</p>`;
+              }
+              if (archSection.diagrams && archSection.diagrams.length > 0) {
+                architectureDiagramsHtml += '<p><strong>Diagrams:</strong></p><ul>';
+                archSection.diagrams.forEach(diagram => {
+                  const fileName = diagram.name || diagram.filename || 'Diagram';
+                  const fileSize = diagram.size ? ` (${(diagram.size / 1024 / 1024).toFixed(2)} MB)` : '';
+                  architectureDiagramsHtml += `<li>📎 ${fileName}${fileSize}</li>`;
+                });
+                architectureDiagramsHtml += '</ul>';
+              }
+            });
+          }
+        }
+      }
+    } catch (metadataError) {
+      console.warn('Could not load metadata for preview:', metadataError);
+    }
+    
+    // Insert Architecture Diagrams after Solution Approach FIRST (only if not already in DOCX)
+    if (architectureDiagramsHtml && !html.includes('Architecture Diagrams')) {
+      const solutionRegex = /(<h[1-6][^>]*>.*?Solution.*?<\/h[1-6]>.*?)(?=<h[1-6])/is;
+      if (solutionRegex.test(html)) {
+        html = html.replace(solutionRegex, (match) => {
+          return match + architectureDiagramsHtml;
+        });
+      } else {
+        // Try alternative patterns for Solution section
+        const alternativeSolutionRegex = /(<h[1-6][^>]*>.*?(Approach|Implementation Plan|Technical Solution).*?<\/h[1-6]>.*?)(?=<h[1-6])/is;
+        if (alternativeSolutionRegex.test(html)) {
+          html = html.replace(alternativeSolutionRegex, (match) => {
+            return match + architectureDiagramsHtml;
+          });
+        } else {
+          // Fallback: insert at end of document
+          html = html + architectureDiagramsHtml;
+        }
+      }
+    }
+    
+    // Insert Labels after Background SECOND (only if not already in DOCX)
+    if (labelsHtml && !html.includes('Technology:') && !html.includes('Sector:') && !html.includes('Region:')) {
+      const backgroundRegex = /<h[1-6][^>]*>.*?Background.*?<\/h[1-6]>(.*?)(?=<h[1-6]|$)/is;
+      if (backgroundRegex.test(html)) {
+        html = html.replace(backgroundRegex, (match, content) => {
+          return match + labelsHtml;
+        });
+      } else {
+        // Fallback: insert at beginning if Background not found
+        html = labelsHtml + html;
+      }
+    }
     
     // Create a complete HTML page with styling
     const styledHtml = `
@@ -1494,6 +2377,35 @@ router.post('/refresh-cache', async (req, res) => {
       success: false,
       error: 'Failed to refresh cache: ' + error.message
     });
+  }
+});
+
+// Serve files from S3 (for diagram display)
+router.get('/file/:s3Key(*)', async (req, res) => {
+  try {
+    const s3Key = req.params.s3Key;
+    console.log(`Serving file: ${s3Key}`);
+    
+    const fileStream = await s3Service.getFileStream(s3Key);
+    
+    // Set appropriate content type based on file extension
+    const extension = s3Key.split('.').pop().toLowerCase();
+    const contentTypes = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'pdf': 'application/pdf'
+    };
+    
+    const contentType = contentTypes[extension] || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Error serving file:', error);
+    res.status(404).json({ error: 'File not found' });
   }
 });
 

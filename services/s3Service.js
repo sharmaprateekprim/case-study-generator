@@ -63,13 +63,64 @@ class S3Service {
       };
 
       console.log(`Uploading file to S3: ${key}`);
+      
       const result = await this.s3.upload(params).promise();
       console.log(`File uploaded successfully: ${result.Location}`);
       
-      return result.Location;
+      return result;
     } catch (error) {
       console.error('Error uploading file to S3:', error);
-      throw new Error(`Failed to upload file: ${error.message}`);
+      
+      if (error.code === 'NoSuchBucket') {
+        throw new Error(`S3 bucket '${this.bucketName}' does not exist. Please create it first.`);
+      } else if (error.code === 'AccessDenied') {
+        throw new Error('Access denied to S3 bucket. Check your AWS credentials and permissions.');
+      } else if (error.code === 'NetworkingError' || error.code === 'TimeoutError') {
+        throw new Error('Network timeout while uploading to S3. Please try again.');
+      } else if (error.code === 'CredentialsError') {
+        throw new Error('Invalid AWS credentials. Please check your configuration.');
+      } else {
+        throw new Error(`S3 upload failed: ${error.message}`);
+      }
+    }
+  }
+
+  async uploadFileToPath(s3Key, fileBuffer, contentType) {
+    await this.initialize();
+    
+    if (!this.bucketName) {
+      throw new Error('S3 bucket name is not configured');
+    }
+
+    try {
+      const params = {
+        Bucket: this.bucketName,
+        Key: s3Key,
+        Body: fileBuffer,
+        ContentType: contentType,
+        ServerSideEncryption: 'AES256'
+      };
+
+      console.log(`Uploading file to S3: ${s3Key}`);
+      
+      const result = await this.s3.upload(params).promise();
+      console.log(`File uploaded successfully: ${result.Location}`);
+      
+      return result;
+    } catch (error) {
+      console.error('Error uploading file to S3:', error);
+      
+      if (error.code === 'NoSuchBucket') {
+        throw new Error(`S3 bucket '${this.bucketName}' does not exist. Please create it first.`);
+      } else if (error.code === 'AccessDenied') {
+        throw new Error('Access denied to S3 bucket. Check your AWS credentials and permissions.');
+      } else if (error.code === 'NetworkingError' || error.code === 'TimeoutError') {
+        throw new Error('Network timeout while uploading to S3. Please try again.');
+      } else if (error.code === 'CredentialsError') {
+        throw new Error('Invalid AWS credentials. Please check your configuration.');
+      } else {
+        throw new Error(`S3 upload failed: ${error.message}`);
+      }
     }
   }
 
@@ -89,14 +140,32 @@ class S3Service {
         Key: key
       };
 
-      console.log(`Downloading file from S3: ${key}`);
       const result = await this.s3.getObject(params).promise();
-      console.log(`File downloaded successfully: ${key}`);
-      
       return result.Body;
     } catch (error) {
-      console.error('Error downloading file from S3:', error);
-      throw new Error(`Failed to download file: ${error.message}`);
+      console.error(`Error downloading file ${fileName} from folder ${folderName}:`, error);
+      throw error;
+    }
+  }
+
+  async downloadFileByKey(s3Key) {
+    await this.initialize();
+    
+    if (!this.bucketName) {
+      throw new Error('S3 bucket name is not configured');
+    }
+
+    try {
+      const params = {
+        Bucket: this.bucketName,
+        Key: s3Key
+      };
+
+      const result = await this.s3.getObject(params).promise();
+      return result.Body;
+    } catch (error) {
+      console.error(`Error downloading file with key ${s3Key}:`, error);
+      throw error;
     }
   }
 
@@ -381,6 +450,336 @@ class S3Service {
     };
 
     return this.s3.getSignedUrl('getObject', params);
+  }
+
+  // Draft management methods
+  async uploadDraft(draftId, draftData) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `drafts/${draftId}/draft.json`,
+      Body: JSON.stringify(draftData, null, 2),
+      ContentType: 'application/json'
+    };
+
+    try {
+      await this.s3.upload(params).promise();
+      console.log(`Draft uploaded: ${draftId}`);
+    } catch (error) {
+      console.error('Error uploading draft:', error);
+      throw error;
+    }
+  }
+
+  async getDraft(draftId) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `drafts/${draftId}/draft.json`
+    };
+
+    try {
+      const result = await this.s3.getObject(params).promise();
+      return JSON.parse(result.Body.toString());
+    } catch (error) {
+      if (error.code === 'NoSuchKey') {
+        return null;
+      }
+      console.error('Error getting draft:', error);
+      throw error;
+    }
+  }
+
+  async listDrafts() {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Prefix: 'drafts/'
+    };
+
+    try {
+      const result = await this.s3.listObjectsV2(params).promise();
+      const drafts = [];
+      
+      for (const object of result.Contents || []) {
+        if (object.Key.endsWith('/draft.json')) {
+          try {
+            const draftId = object.Key.replace('drafts/', '').replace('/draft.json', '');
+            const draftData = await this.getDraft(draftId);
+            if (draftData) {
+              drafts.push(draftData);
+            }
+          } catch (error) {
+            console.error(`Error loading draft ${object.Key}:`, error);
+          }
+        }
+      }
+      
+      return drafts.filter(draft => draft && draft.updatedAt).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    } catch (error) {
+      console.error('Error listing drafts:', error);
+      throw error;
+    }
+  }
+
+  async deleteDraft(draftId) {
+    await this.initialize();
+    
+    try {
+      // List all objects in the draft folder
+      const listParams = {
+        Bucket: this.bucketName,
+        Prefix: `drafts/${draftId}/`
+      };
+      
+      const objects = await this.s3.listObjectsV2(listParams).promise();
+      
+      if (objects.Contents && objects.Contents.length > 0) {
+        // Delete all objects in the draft folder
+        const deleteParams = {
+          Bucket: this.bucketName,
+          Delete: {
+            Objects: objects.Contents.map(obj => ({ Key: obj.Key }))
+          }
+        };
+        
+        await this.s3.deleteObjects(deleteParams).promise();
+        console.log(`Draft and all associated files deleted: ${draftId}`);
+      } else {
+        console.log(`No files found for draft: ${draftId}`);
+      }
+    } catch (error) {
+      console.error('Error deleting draft:', error);
+      throw error;
+    }
+  }
+
+  async getMetadata(folderName) {
+    await this.initialize();
+    
+    // Try both possible metadata file names
+    const possibleKeys = [
+      `case-studies/${folderName}/${folderName}-metadata.json`,
+      `case-studies/${folderName}/metadata.json`
+    ];
+
+    for (const key of possibleKeys) {
+      try {
+        const params = {
+          Bucket: this.bucketName,
+          Key: key
+        };
+        
+        const result = await this.s3.getObject(params).promise();
+        return JSON.parse(result.Body.toString());
+      } catch (error) {
+        if (error.code !== 'NoSuchKey') {
+          console.error(`Error getting metadata from ${key}:`, error);
+        }
+        // Continue to next key
+      }
+    }
+    
+    return null;
+  }
+
+  async listCaseStudyFiles(folderName) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Prefix: `case-studies/${folderName}/`
+    };
+
+    try {
+      const result = await this.s3.listObjectsV2(params).promise();
+      return result.Contents || [];
+    } catch (error) {
+      console.error('Error listing case study files:', error);
+      throw error;
+    }
+  }
+
+  async saveMetadata(folderName, caseStudy) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `case-studies/${folderName}/metadata.json`,
+      Body: JSON.stringify(caseStudy, null, 2),
+      ContentType: 'application/json'
+    };
+
+    try {
+      await this.s3.upload(params).promise();
+      console.log(`Metadata saved for case study: ${folderName}`);
+    } catch (error) {
+      console.error('Error saving metadata:', error);
+      throw error;
+    }
+  }
+
+  async getDraftReviewComments(draftId) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `draft-reviews/${draftId}/comments.json`
+    };
+
+    try {
+      const result = await this.s3.getObject(params).promise();
+      return JSON.parse(result.Body.toString());
+    } catch (error) {
+      if (error.code === 'NoSuchKey') {
+        return [];
+      }
+      console.error('Error getting draft review comments:', error);
+      throw error;
+    }
+  }
+
+  async saveDraftReviewComments(draftId, comments) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `draft-reviews/${draftId}/comments.json`,
+      Body: JSON.stringify(comments, null, 2),
+      ContentType: 'application/json'
+    };
+
+    try {
+      await this.s3.upload(params).promise();
+      console.log(`Draft review comments saved for draft: ${draftId}`);
+    } catch (error) {
+      console.error('Error saving draft review comments:', error);
+      throw error;
+    }
+  }
+
+  async getReviewComments(folderName) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `reviews/${folderName}/comments.json`
+    };
+
+    try {
+      const result = await this.s3.getObject(params).promise();
+      return JSON.parse(result.Body.toString());
+    } catch (error) {
+      if (error.code === 'NoSuchKey') {
+        return [];
+      }
+      console.error('Error getting review comments:', error);
+      throw error;
+    }
+  }
+
+  async saveReviewComments(folderName, comments) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: `reviews/${folderName}/comments.json`,
+      Body: JSON.stringify(comments, null, 2),
+      ContentType: 'application/json'
+    };
+
+    try {
+      await this.s3.upload(params).promise();
+      console.log(`Review comments saved for: ${folderName}`);
+    } catch (error) {
+      console.error('Error saving review comments:', error);
+      throw error;
+    }
+  }
+
+  async getAllReviews() {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Prefix: 'reviews/'
+    };
+
+    try {
+      const result = await this.s3.listObjectsV2(params).promise();
+      const reviews = [];
+      
+      for (const file of result.Contents || []) {
+        if (file.Key.endsWith('/comments.json')) {
+          const folderName = file.Key.split('/')[1];
+          const comments = await this.getReviewComments(folderName);
+          reviews.push({
+            folderName,
+            commentCount: comments.length,
+            lastActivity: comments.length > 0 ? comments[comments.length - 1].timestamp : null,
+            comments
+          });
+        }
+      }
+      
+      return reviews.sort((a, b) => new Date(b.lastActivity || 0) - new Date(a.lastActivity || 0));
+    } catch (error) {
+      console.error('Error getting all reviews:', error);
+      throw error;
+    }
+  }
+
+  async uploadFileToPath(s3Key, fileBuffer, contentType) {
+    await this.initialize();
+    
+    if (!this.bucketName) {
+      throw new Error('S3 bucket name is not configured');
+    }
+
+    try {
+      const params = {
+        Bucket: this.bucketName,
+        Key: s3Key,
+        Body: fileBuffer,
+        ContentType: contentType,
+        ServerSideEncryption: 'AES256'
+      };
+
+      console.log(`Uploading file to S3: ${s3Key}`);
+      
+      const result = await this.s3.upload(params).promise();
+      console.log(`File uploaded successfully: ${result.Location}`);
+      
+      return result;
+    } catch (error) {
+      console.error('Error uploading file to S3:', error);
+      
+      if (error.code === 'NoSuchBucket') {
+        throw new Error(`S3 bucket '${this.bucketName}' does not exist. Please create it first.`);
+      } else if (error.code === 'AccessDenied') {
+        throw new Error('Access denied to S3 bucket. Check your AWS credentials and permissions.');
+      } else if (error.code === 'NetworkingError' || error.code === 'TimeoutError') {
+        throw new Error('Network timeout while uploading to S3. Please try again.');
+      } else if (error.code === 'CredentialsError') {
+        throw new Error('Invalid AWS credentials. Please check your configuration.');
+      } else {
+        throw new Error(`S3 upload failed: ${error.message}`);
+      }
+    }
+  }
+
+  async getFileStream(s3Key) {
+    await this.initialize();
+    
+    const params = {
+      Bucket: this.bucketName,
+      Key: s3Key
+    };
+
+    return this.s3.getObject(params).createReadStream();
   }
 }
 
