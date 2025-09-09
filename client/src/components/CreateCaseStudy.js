@@ -249,7 +249,14 @@ const CreateCaseStudy = () => {
       setLabelsLoading(true);
       const response = await axios.get('/api/case-studies/labels');
       if (response.data.success) {
-        setAvailableLabels(response.data.labels);
+        // Normalize labels to ensure all values are strings
+        const normalizedLabels = {};
+        Object.entries(response.data.labels).forEach(([category, values]) => {
+          normalizedLabels[category] = values.map(value => 
+            typeof value === 'object' ? value.name || JSON.stringify(value) : value
+          );
+        });
+        setAvailableLabels(normalizedLabels);
       }
     } catch (err) {
       console.error('Error fetching labels:', err);

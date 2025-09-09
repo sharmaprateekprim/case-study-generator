@@ -354,7 +354,8 @@ const DraftReview = () => {
             </div>
           )}
 
-          {data.implementationWorkstreams && Array.isArray(data.implementationWorkstreams) && data.implementationWorkstreams.length > 0 && (
+          {data.implementationWorkstreams && Array.isArray(data.implementationWorkstreams) && data.implementationWorkstreams.length > 0 && 
+           data.implementationWorkstreams.some(workstream => workstream && (workstream.name || workstream.description)) && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Implementation Workstreams</h4>
               {data.implementationWorkstreams.map((workstream, index) => (

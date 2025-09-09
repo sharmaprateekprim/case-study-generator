@@ -15,7 +15,7 @@
 
 2. **Connect to instance**:
 ```bash
-ssh -i your-key.pem ec2-user@your-ec2-ip
+ssh -i your-key.pem ubuntu@your-ec2-ip
 ```
 
 ## Step 2: Install Dependencies

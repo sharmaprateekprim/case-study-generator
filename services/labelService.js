@@ -275,6 +275,25 @@ class LabelService {
     }
   }
 
+  // Get raw labels from S3 without object conversion (for manage labels page)
+  async getRawLabels() {
+    await this.initialize();
+    
+    try {
+      const params = {
+        Bucket: this.bucketName,
+        Key: this.labelsKey
+      };
+
+      const result = await this.s3.getObject(params).promise();
+      return JSON.parse(result.Body.toString());
+    } catch (error) {
+      console.error('Error getting labels from S3:', error);
+      // Return default labels as fallback
+      return this.getDefaultLabels();
+    }
+  }
+
   // Convert string array labels to object format expected by client
   convertLabelsToObjectFormat(rawLabels) {
     const convertedLabels = {};

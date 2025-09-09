@@ -44,7 +44,22 @@ const ViewCaseStudies = () => {
     try {
       const response = await axios.get('/api/labels');
       if (response.data.success) {
-        setAvailableLabels(response.data.labels);
+        // Normalize labels to ensure all values are strings
+        const normalizedLabels = {};
+        Object.entries(response.data.labels).forEach(([category, values]) => {
+          normalizedLabels[category] = values.map(value => {
+            if (typeof value === 'string') {
+              return value;
+            } else if (typeof value === 'object' && value !== null) {
+              // Prioritize name property, fallback to JSON
+              return value.name || JSON.stringify(value);
+            } else {
+              return String(value);
+            }
+          });
+        });
+        console.log('Normalized labels:', normalizedLabels); // Debug log
+        setAvailableLabels(normalizedLabels);
       }
     } catch (err) {
       console.error('Error fetching labels:', err);
@@ -271,7 +286,15 @@ const ViewCaseStudies = () => {
     Object.keys(labels).forEach(category => {
       if (labels[category] && labels[category].length > 0) {
         labels[category].forEach(label => {
-          const labelText = typeof label === 'string' ? label : (label?.name || String(label));
+          // Ensure label is always a string
+          let labelText;
+          if (typeof label === 'string') {
+            labelText = label;
+          } else if (typeof label === 'object' && label !== null) {
+            labelText = label.name || JSON.stringify(label);
+          } else {
+            labelText = String(label);
+          }
           allLabels.push({ category, label: labelText });
         });
       }
@@ -424,11 +447,13 @@ const ViewCaseStudies = () => {
                     className="filter-select"
                   >
                     <option value="">All</option>
-                    {availableLabels[category]?.map(label => {
-                      const labelText = typeof label === 'string' ? label : (label?.name || String(label));
-                      const labelValue = typeof label === 'string' ? label : (label?.name || String(label));
+                    {availableLabels[category]?.map((label, index) => {
+                      // Labels should already be normalized to strings
+                      const labelText = String(label); // Ensure string
                       return (
-                        <option key={labelValue} value={labelValue}>{labelText}</option>
+                        <option key={`${category}-${index}`} value={labelText}>
+                          {labelText}
+                        </option>
                       );
                     })}
                   </select>
@@ -469,8 +494,7 @@ const ViewCaseStudies = () => {
             {caseStudies.map((caseStudy) => (
               <div key={caseStudy.folderName || caseStudy.id} className="case-study-item">
                 <h3 className="card-title">
-                  {caseStudy.title} 
-                  {caseStudy.version && <span style={{ fontSize: '0.8em', color: '#666', marginLeft: '0.5rem' }}>v{caseStudy.version.split('.')[0]}</span>}
+                  {caseStudy.title}
                 </h3>
                 
                 <div className="card-content">

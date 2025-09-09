@@ -23,6 +23,17 @@ const ManageLabels = () => {
   // State for delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+  // Helper function to normalize labels
+  const normalizeLabels = (labels) => {
+    const normalized = {};
+    Object.entries(labels).forEach(([category, values]) => {
+      normalized[category] = values.map(value => 
+        typeof value === 'object' ? value.name || JSON.stringify(value) : value
+      );
+    });
+    return normalized;
+  };
+
   useEffect(() => {
     fetchLabels();
   }, []);
@@ -35,7 +46,7 @@ const ManageLabels = () => {
       const response = await axios.get('/api/case-studies/labels');
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
       } else {
         setError(response.data.error || 'Failed to fetch labels');
       }
@@ -63,7 +74,7 @@ const ManageLabels = () => {
       });
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setNewCategoryName('');
         setShowAddCategory(false);
         setSuccess(response.data.message);
@@ -83,7 +94,7 @@ const ManageLabels = () => {
       const response = await axios.delete(`/api/case-studies/labels/categories/${encodeURIComponent(categoryName)}`);
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setDeleteConfirm(null);
         setSuccess(response.data.message);
       } else {
@@ -109,7 +120,7 @@ const ManageLabels = () => {
       });
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setEditingCategory(null);
         setSuccess(response.data.message);
       } else {
@@ -135,7 +146,7 @@ const ManageLabels = () => {
       });
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setNewValue('');
         setAddingValueTo(null);
         setSuccess(response.data.message);
@@ -162,7 +173,7 @@ const ManageLabels = () => {
       });
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setEditingValue(null);
         setEditValue('');
         setSuccess(response.data.message);
@@ -182,7 +193,7 @@ const ManageLabels = () => {
       const response = await axios.delete(`/api/case-studies/labels/categories/${encodeURIComponent(categoryName)}/values/${valueIndex}`);
       
       if (response.data.success) {
-        setLabels(response.data.labels);
+        setLabels(normalizeLabels(response.data.labels));
         setDeleteConfirm(null);
         setSuccess(response.data.message);
       } else {
@@ -200,7 +211,7 @@ const ManageLabels = () => {
 
   const startEditingValue = (categoryName, valueIndex, currentValue) => {
     setEditingValue(`${categoryName}-${valueIndex}`);
-    setEditValue(currentValue);
+    setEditValue(typeof currentValue === 'object' ? currentValue.name || JSON.stringify(currentValue) : currentValue);
   };
 
   const cancelEditing = () => {
@@ -228,7 +239,7 @@ const ManageLabels = () => {
       {deleteConfirm && (
         <div className="card" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeaa7', marginBottom: '2rem' }}>
           <h3 style={{ color: '#856404' }}>Confirm Deletion</h3>
-          <p>Are you sure you want to delete {deleteConfirm.type === 'category' ? `category "${deleteConfirm.categoryName}"` : `value "${deleteConfirm.value}"`}?</p>
+          <p>Are you sure you want to delete {deleteConfirm.type === 'category' ? `category "${deleteConfirm.categoryName}"` : `value "${typeof deleteConfirm.value === 'object' ? deleteConfirm.value.name || JSON.stringify(deleteConfirm.value) : deleteConfirm.value}"`}?</p>
           {deleteConfirm.type === 'category' && (
             <p style={{ fontSize: '0.9rem', color: '#666' }}>
               This will delete the entire category and all its values. This action cannot be undone.
@@ -426,7 +437,7 @@ const ManageLabels = () => {
                                 type: 'value', 
                                 categoryName, 
                                 valueIndex: index, 
-                                value 
+                                value: typeof value === 'object' ? value.name || JSON.stringify(value) : value
                               })} 
                               className="btn btn-danger"
                               style={{ padding: '0.125rem 0.25rem', fontSize: '0.7rem' }}

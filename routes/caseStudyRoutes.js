@@ -101,7 +101,7 @@ const validateCaseStudyData = (req, res, next) => {
 // Get all labels
 router.get('/labels', async (req, res) => {
   try {
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     res.json({
       success: true,
       labels: labels
@@ -155,7 +155,7 @@ router.post('/labels/categories', async (req, res) => {
       });
     }
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (labels[categoryName]) {
       return res.status(400).json({
@@ -186,7 +186,7 @@ router.delete('/labels/categories/:categoryName', async (req, res) => {
   try {
     const { categoryName } = req.params;
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (!labels[categoryName]) {
       return res.status(404).json({
@@ -225,7 +225,7 @@ router.put('/labels/categories/:categoryName', async (req, res) => {
       });
     }
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (!labels[categoryName]) {
       return res.status(404).json({
@@ -276,7 +276,7 @@ router.post('/labels/categories/:categoryName/values', async (req, res) => {
       });
     }
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (!labels[categoryName]) {
       return res.status(404).json({
@@ -322,7 +322,7 @@ router.put('/labels/categories/:categoryName/values/:valueIndex', async (req, re
       });
     }
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (!labels[categoryName]) {
       return res.status(404).json({
@@ -371,7 +371,7 @@ router.delete('/labels/categories/:categoryName/values/:valueIndex', async (req,
   try {
     const { categoryName, valueIndex } = req.params;
     
-    const labels = await labelService.getLabels();
+    const labels = await labelService.getRawLabels();
     
     if (!labels[categoryName]) {
       return res.status(404).json({

@@ -366,7 +366,8 @@ const ReviewCaseStudies = () => {
               )}
 
               {(caseStudy.implementationWorkstreams || caseStudy.questionnaire?.content?.implementationWorkstreams) && 
-               (caseStudy.implementationWorkstreams?.length > 0 || caseStudy.questionnaire?.content?.implementationWorkstreams?.length > 0) && (
+               (caseStudy.implementationWorkstreams?.length > 0 || caseStudy.questionnaire?.content?.implementationWorkstreams?.length > 0) &&
+               (caseStudy.implementationWorkstreams || caseStudy.questionnaire?.content?.implementationWorkstreams || []).some(workstream => workstream && (workstream.name || workstream.description)) && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Implementation Workstreams</h4>
                   {(caseStudy.implementationWorkstreams || caseStudy.questionnaire?.content?.implementationWorkstreams || []).map((workstream, index) => (
