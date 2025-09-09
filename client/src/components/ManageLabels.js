@@ -410,7 +410,9 @@ const ManageLabels = () => {
                           </div>
                         ) : (
                           <>
-                            <span style={{ marginRight: '0.5rem' }}>{value}</span>
+                            <span style={{ marginRight: '0.5rem' }}>
+                              {typeof value === 'object' ? value.name || JSON.stringify(value) : value}
+                            </span>
                             <button 
                               onClick={() => startEditingValue(categoryName, index, value)} 
                               className="btn btn-info"
