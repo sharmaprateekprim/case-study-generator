@@ -320,7 +320,7 @@ const ReviewCaseStudies = () => {
                       {archSection.diagrams && Array.isArray(archSection.diagrams) && archSection.diagrams.length > 0 && (
                         <div style={{ marginTop: '0.5rem' }}>
                           <strong>Diagrams:</strong>
-                          {archSection.diagrams.map((diagram, diagramIndex) => (
+                          {archSection.diagrams.filter(diagram => diagram && (diagram.name || diagram.filename || diagram.s3Key)).map((diagram, diagramIndex) => (
                             <div key={diagramIndex} style={{ marginLeft: '1rem', marginTop: '0.5rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
                               <div>
                                 📎 {diagram.name || diagram.filename || 'Diagram'}

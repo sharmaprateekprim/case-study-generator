@@ -434,6 +434,30 @@ router.post('/create', upload.any(), async (req, res) => {
           draftData.labels = {};
         }
       }
+      if (draftData.customMetrics && typeof draftData.customMetrics === 'string') {
+        try {
+          draftData.customMetrics = JSON.parse(draftData.customMetrics);
+        } catch (e) {
+          console.warn('Could not parse customMetrics JSON:', e);
+          draftData.customMetrics = [];
+        }
+      }
+      if (draftData.implementationWorkstreams && typeof draftData.implementationWorkstreams === 'string') {
+        try {
+          draftData.implementationWorkstreams = JSON.parse(draftData.implementationWorkstreams);
+        } catch (e) {
+          console.warn('Could not parse implementationWorkstreams JSON:', e);
+          draftData.implementationWorkstreams = [];
+        }
+      }
+      if (draftData.architectureDiagrams && typeof draftData.architectureDiagrams === 'string') {
+        try {
+          draftData.architectureDiagrams = JSON.parse(draftData.architectureDiagrams);
+        } catch (e) {
+          console.warn('Could not parse architectureDiagrams JSON:', e);
+          draftData.architectureDiagrams = [];
+        }
+      }
       
       // Process uploaded files (same logic as save-draft)
       const processedFiles = {
@@ -574,6 +598,214 @@ router.post('/create', upload.any(), async (req, res) => {
           error: 'Draft not found'
         });
       }
+      
+      console.log('Updating existing draft with new form data...');
+      
+      // Parse JSON fields from FormData (same as save-draft route)
+      if (draftData.labels && typeof draftData.labels === 'string') {
+        try {
+          draftData.labels = JSON.parse(draftData.labels);
+        } catch (e) {
+          console.warn('Could not parse labels JSON:', e);
+          draftData.labels = {};
+        }
+      }
+      if (draftData.customMetrics && typeof draftData.customMetrics === 'string') {
+        try {
+          draftData.customMetrics = JSON.parse(draftData.customMetrics);
+        } catch (e) {
+          console.warn('Could not parse customMetrics JSON:', e);
+          draftData.customMetrics = [];
+        }
+      }
+      if (draftData.implementationWorkstreams && typeof draftData.implementationWorkstreams === 'string') {
+        try {
+          draftData.implementationWorkstreams = JSON.parse(draftData.implementationWorkstreams);
+        } catch (e) {
+          console.warn('Could not parse implementationWorkstreams JSON:', e);
+          draftData.implementationWorkstreams = [];
+        }
+      }
+      if (draftData.architectureDiagrams && typeof draftData.architectureDiagrams === 'string') {
+        try {
+          draftData.architectureDiagrams = JSON.parse(draftData.architectureDiagrams);
+        } catch (e) {
+          console.warn('Could not parse architectureDiagrams JSON:', e);
+          draftData.architectureDiagrams = [];
+        }
+      }
+      
+      // Process uploaded files (same logic as save-draft)
+      const processedFiles = {
+        architectureDiagrams: {},
+        workstreamDiagrams: {}
+      };
+
+      // Handle architecture diagrams
+      if (req.files) {
+        const architectureFiles = req.files.filter(file => file.fieldname.startsWith('architecture-') && file.fieldname.endsWith('-diagrams'));
+        
+        for (const file of architectureFiles) {
+          try {
+            const match = file.fieldname.match(/architecture-(\d+)-diagrams/);
+            if (match) {
+              const archIndex = parseInt(match[1]);
+              
+              if (!processedFiles.architectureDiagrams[archIndex]) {
+                processedFiles.architectureDiagrams[archIndex] = [];
+              }
+              
+              const fileName = `arch-${archIndex}-${Date.now()}-${file.originalname}`;
+              const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+              
+              await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+              
+              processedFiles.architectureDiagrams[archIndex].push({
+                name: file.originalname,
+                filename: fileName,
+                s3Key: s3Key,
+                size: file.size,
+                type: file.mimetype
+              });
+            }
+          } catch (error) {
+            console.error('Error uploading architecture diagram:', error);
+          }
+        }
+
+        // Handle workstream diagrams
+        const workstreamFiles = req.files.filter(file => file.fieldname.startsWith('workstream-') && file.fieldname.endsWith('-diagrams'));
+        
+        for (const file of workstreamFiles) {
+          try {
+            const match = file.fieldname.match(/workstream-(\d+)-diagrams/);
+            if (match) {
+              const workstreamIndex = parseInt(match[1]);
+              
+              if (!processedFiles.workstreamDiagrams[workstreamIndex]) {
+                processedFiles.workstreamDiagrams[workstreamIndex] = [];
+              }
+              
+              const fileName = `workstream-${workstreamIndex}-${Date.now()}-${file.originalname}`;
+              const s3Key = `drafts/${draftId}/diagrams/${fileName}`;
+              
+              await s3Service.uploadFileToPath(s3Key, file.buffer, file.mimetype);
+              
+              processedFiles.workstreamDiagrams[workstreamIndex].push({
+                name: file.originalname,
+                filename: fileName,
+                s3Key: s3Key,
+                size: file.size,
+                type: file.mimetype
+              });
+            }
+          } catch (error) {
+            console.error('Error uploading workstream diagram:', error);
+          }
+        }
+      }
+
+      // Build architecture diagrams structure
+      let architectureDiagrams = [];
+      if (draftData.architectureDiagrams) {
+        architectureDiagrams = draftData.architectureDiagrams;
+      }
+      
+      // Preserve existing architecture diagrams and only add new uploads
+      if (existingDraft.data && existingDraft.data.architectureDiagrams) {
+        const existingArchDiagrams = existingDraft.data.architectureDiagrams;
+        
+        // Start with existing diagrams structure
+        architectureDiagrams = existingArchDiagrams.map((existingArch, index) => ({
+          ...existingArch,
+          // Update form fields (name, description) with new values if provided
+          ...(architectureDiagrams[index] ? {
+            name: architectureDiagrams[index].name || existingArch.name,
+            description: architectureDiagrams[index].description || existingArch.description
+          } : {})
+        }));
+        
+        // Add any new architecture sections from form
+        if (draftData.architectureDiagrams && draftData.architectureDiagrams.length > existingArchDiagrams.length) {
+          for (let i = existingArchDiagrams.length; i < draftData.architectureDiagrams.length; i++) {
+            architectureDiagrams.push(draftData.architectureDiagrams[i]);
+          }
+        }
+      }
+
+      // Add only newly uploaded files to architecture diagrams
+      architectureDiagrams.forEach((archDiagram, archIndex) => {
+        if (processedFiles.architectureDiagrams[archIndex]) {
+          const existingDiagrams = archDiagram.diagrams || [];
+          const newUploadedDiagrams = processedFiles.architectureDiagrams[archIndex];
+          
+          // Filter out duplicates based on file name
+          const uniqueNewDiagrams = newUploadedDiagrams.filter(newDiagram => {
+            return !existingDiagrams.some(existingDiagram => 
+              existingDiagram.name === newDiagram.name
+            );
+          });
+          
+          archDiagram.diagrams = [...existingDiagrams, ...uniqueNewDiagrams];
+        }
+      });
+
+      // Build implementation workstreams structure
+      let implementationWorkstreams = [];
+      if (draftData.implementationWorkstreams) {
+        implementationWorkstreams = draftData.implementationWorkstreams;
+      }
+      
+      // Preserve existing workstreams and only add new uploads
+      if (existingDraft.data && existingDraft.data.implementationWorkstreams) {
+        const existingWorkstreams = existingDraft.data.implementationWorkstreams;
+        
+        // Start with existing workstreams structure
+        implementationWorkstreams = existingWorkstreams.map((existingWorkstream, index) => ({
+          ...existingWorkstream,
+          // Update form fields (name, description) with new values if provided
+          ...(implementationWorkstreams[index] ? {
+            name: implementationWorkstreams[index].name || existingWorkstream.name,
+            description: implementationWorkstreams[index].description || existingWorkstream.description
+          } : {})
+        }));
+        
+        // Add any new workstream sections from form
+        if (draftData.implementationWorkstreams && draftData.implementationWorkstreams.length > existingWorkstreams.length) {
+          for (let i = existingWorkstreams.length; i < draftData.implementationWorkstreams.length; i++) {
+            implementationWorkstreams.push(draftData.implementationWorkstreams[i]);
+          }
+        }
+      }
+
+      // Add only newly uploaded files to workstreams
+      implementationWorkstreams.forEach((workstream, workstreamIndex) => {
+        if (processedFiles.workstreamDiagrams[workstreamIndex]) {
+          const existingDiagrams = workstream.diagrams || [];
+          const newUploadedDiagrams = processedFiles.workstreamDiagrams[workstreamIndex];
+          
+          // Filter out duplicates based on file name
+          const uniqueNewDiagrams = newUploadedDiagrams.filter(newDiagram => {
+            return !existingDiagrams.some(existingDiagram => 
+              existingDiagram.name === newDiagram.name
+            );
+          });
+          
+          workstream.diagrams = [...existingDiagrams, ...uniqueNewDiagrams];
+        }
+      });
+      
+      // Update existing draft with new data
+      existingDraft.data = {
+        ...draftData,
+        architectureDiagrams: architectureDiagrams,
+        implementationWorkstreams: implementationWorkstreams,
+        customMetrics: draftData.customMetrics
+      };
+      existingDraft.updatedAt = new Date().toISOString();
+      
+      // Save the updated draft
+      await s3Service.uploadDraft(draftId, existingDraft);
     }
 
     // Update draft status to 'under_review'
@@ -1994,13 +2226,30 @@ router.get('/preview/:folderName/:fileName', async (req, res) => {
                 architectureDiagramsHtml += `<p>${archSection.description}</p>`;
               }
               if (archSection.diagrams && archSection.diagrams.length > 0) {
-                architectureDiagramsHtml += '<p><strong>Diagrams:</strong></p><ul>';
+                architectureDiagramsHtml += '<div style="margin: 20px 0;">';
                 archSection.diagrams.forEach(diagram => {
                   const fileName = diagram.name || diagram.filename || 'Diagram';
                   const fileSize = diagram.size ? ` (${(diagram.size / 1024 / 1024).toFixed(2)} MB)` : '';
-                  architectureDiagramsHtml += `<li>📎 ${fileName}${fileSize}</li>`;
+                  
+                  if (diagram.s3Key && (diagram.type || diagram.mimetype) && (diagram.type || diagram.mimetype).startsWith('image/')) {
+                    // Render as image
+                    architectureDiagramsHtml += `
+                      <div style="margin: 15px 0; text-align: center;">
+                        <p><strong>${fileName}${fileSize}</strong></p>
+                        <img src="/api/case-studies/file/${encodeURIComponent(diagram.s3Key)}" 
+                             alt="${fileName}" 
+                             style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" 
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                        <div style="display: none; padding: 20px; background-color: #f5f5f5; text-align: center; border: 1px solid #ccc; border-radius: 4px;">
+                          📄 ${fileName} (Preview not available)
+                        </div>
+                      </div>`;
+                  } else {
+                    // Render as file link
+                    architectureDiagramsHtml += `<p>📎 ${fileName}${fileSize}</p>`;
+                  }
                 });
-                architectureDiagramsHtml += '</ul>';
+                architectureDiagramsHtml += '</div>';
               }
             });
           }

@@ -547,13 +547,35 @@ class DocxService {
 
         // Process diagrams in this section
         if (archSection.diagrams && Array.isArray(archSection.diagrams)) {
-          for (const diagram of archSection.diagrams) {
+          // Filter out empty diagram objects
+          const validDiagrams = archSection.diagrams.filter(diagram => 
+            diagram && (diagram.name || diagram.filename || diagram.s3Key)
+          );
+          
+          for (const diagram of validDiagrams) {
             try {
               // Try to embed the image if it's an image file
-              if (this.isImageFile(diagram.type)) {
+              const diagramType = diagram.type || diagram.mimetype;
+              if (this.isImageFile(diagramType)) {
                 const imageParagraph = await this.createImageParagraph(diagram, caseStudyFolder);
                 if (imageParagraph) {
                   paragraphs.push(imageParagraph);
+                } else {
+                  // Fallback: Add text reference if image embedding failed
+                  paragraphs.push(
+                    new Paragraph({
+                      children: [
+                        new TextRun({
+                          text: `📎 ${diagram.name || diagram.filename || 'Diagram'} (Image embedding failed)`,
+                          font: "Calibri",
+                          size: 22,
+                          color: "000000"
+                        })
+                      ],
+                      style: "Normal",
+                      spacing: { before: 100, after: 100 }
+                    })
+                  );
                 }
               } else {
                 // For non-image files (like PDFs), show a reference
@@ -654,19 +676,32 @@ class DocxService {
       
       let imageBuffer;
       
-      // Try to download using s3Key first (full path)
+      // Try to download using s3Key first (most reliable for draft diagrams)
       if (diagram.s3Key) {
         try {
           imageBuffer = await s3Service.downloadFileByKey(diagram.s3Key);
+          console.log(`Successfully downloaded diagram using s3Key: ${diagram.s3Key}`);
         } catch (error) {
           console.warn(`Failed to download using s3Key ${diagram.s3Key}:`, error);
         }
       }
       
-      // Fallback to filename in case study folder
+      // Fallback to filename in case study folder (for legacy case studies)
+      if (!imageBuffer && caseStudyFolder) {
+        try {
+          const fileName = diagram.name || diagram.filename || diagram.s3Key?.split('/').pop();
+          if (fileName) {
+            imageBuffer = await s3Service.downloadFile(caseStudyFolder, fileName);
+            console.log(`Successfully downloaded diagram using caseStudyFolder: ${caseStudyFolder}/${fileName}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to download using caseStudyFolder ${caseStudyFolder}:`, error);
+        }
+      }
+      
       if (!imageBuffer) {
-        const fileName = diagram.name || diagram.filename || diagram.s3Key?.split('/').pop();
-        imageBuffer = await s3Service.downloadFile(caseStudyFolder, fileName);
+        console.warn(`Could not download diagram: ${diagram.name || diagram.filename || 'unknown'}`);
+        return null;
       }
       
       // Calculate optimal dimensions for document width
@@ -944,23 +979,29 @@ class DocxService {
 
       // Workstream diagrams (embedded)
       if (workstream.diagrams && workstream.diagrams.length > 0) {
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: "Associated Diagrams:",
-                font: "Calibri",
-                size: 22,
-                bold: true,
-                color: "000000"
-              }),
-            ],
-            style: "Normal",
-            spacing: { before: 200, after: 100 }
-          })
+        // Filter out empty diagram objects
+        const validDiagrams = workstream.diagrams.filter(diagram => 
+          diagram && (diagram.name || diagram.filename || diagram.s3Key)
         );
+        
+        if (validDiagrams.length > 0) {
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: "Associated Diagrams:",
+                  font: "Calibri",
+                  size: 22,
+                  bold: true,
+                  color: "000000"
+                }),
+              ],
+              style: "Normal",
+              spacing: { before: 200, after: 100 }
+            })
+          );
 
-        for (const diagram of workstream.diagrams) {
+          for (const diagram of validDiagrams) {
           try {
             // Add diagram title (only if name exists and is not empty)
             const diagramName = diagram.name || diagram.filename;
@@ -983,10 +1024,26 @@ class DocxService {
             }
 
             // Try to embed the image if it's an image file
-            if (this.isImageFile(diagram.type)) {
+            const diagramType = diagram.type || diagram.mimetype;
+            if (this.isImageFile(diagramType)) {
               const imageParagraph = await this.createImageParagraph(diagram, caseStudyFolder);
               if (imageParagraph) {
                 paragraphs.push(imageParagraph);
+              } else {
+                // Fallback: Add text reference if image embedding failed
+                paragraphs.push(
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `📎 ${diagram.name || diagram.filename || 'Diagram'} (Image embedding failed)`,
+                        font: "Calibri",
+                        size: 20,
+                        color: "000000"
+                      })
+                    ],
+                    style: "Normal"
+                  })
+                );
               }
             } else {
               // For non-image files (like PDFs), show a reference (only if name exists)
@@ -1026,6 +1083,7 @@ class DocxService {
               })
             );
           }
+        }
         }
       }
     }

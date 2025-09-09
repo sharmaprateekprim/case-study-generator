@@ -317,7 +317,13 @@ const DraftReview = () => {
                   {archSection.diagrams && Array.isArray(archSection.diagrams) && archSection.diagrams.length > 0 && (
                     <div style={{ marginTop: '0.5rem' }}>
                       <strong>Diagrams:</strong>
-                      {archSection.diagrams.filter(diagram => diagram && (diagram.name || diagram.filename || diagram.s3Key)).map((diagram, diagramIndex) => (
+                      {archSection.diagrams.filter(diagram => diagram && (diagram.name || diagram.filename || diagram.s3Key))
+                        .filter((diagram, index, array) => {
+                          // Remove duplicates based on s3Key or filename
+                          const key = diagram.s3Key || diagram.filename || diagram.name;
+                          return array.findIndex(d => (d.s3Key || d.filename || d.name) === key) === index;
+                        })
+                        .map((diagram, diagramIndex) => (
                         <div key={diagramIndex} style={{ marginLeft: '1rem', marginTop: '0.5rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
                           <div>
                             📎 {diagram.name || diagram.filename || 'Diagram'}
@@ -358,7 +364,13 @@ const DraftReview = () => {
                   {workstream.diagrams && Array.isArray(workstream.diagrams) && workstream.diagrams.length > 0 && (
                     <div style={{ marginTop: '0.5rem' }}>
                       <strong>Diagrams:</strong>
-                      {workstream.diagrams.filter(diagram => diagram && (diagram.name || diagram.filename)).map((diagram, diagramIndex) => (
+                      {workstream.diagrams.filter(diagram => diagram && (diagram.name || diagram.filename))
+                        .filter((diagram, index, array) => {
+                          // Remove duplicates based on s3Key or filename
+                          const key = diagram.s3Key || diagram.filename || diagram.name;
+                          return array.findIndex(d => (d.s3Key || d.filename || d.name) === key) === index;
+                        })
+                        .map((diagram, diagramIndex) => (
                         <div key={diagramIndex} style={{ marginLeft: '1rem', marginTop: '0.5rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
                           <div>
                             📎 {diagram.name || diagram.filename || 'Diagram'}

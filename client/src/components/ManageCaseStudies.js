@@ -346,15 +346,13 @@ const ManageCaseStudies = () => {
                   {draft.status === 'under_review' ? (
                     <>
                       <button 
-                        className="btn btn-secondary" 
-                        style={{ marginRight: '0.5rem' }}
+                        className="btn btn-secondary manage-btn" 
                         onClick={() => navigate(`/review-draft/${draft.id}`)}
                       >
                         View
                       </button>
                       <button 
-                        className="btn btn-warning" 
-                        style={{ marginRight: '0.5rem' }}
+                        className="btn btn-warning manage-btn" 
                         onClick={async () => {
                           try {
                             await axios.post(`/api/case-studies/drafts/${draft.id}/incorporate-feedback`);
@@ -370,8 +368,7 @@ const ManageCaseStudies = () => {
                     </>
                   ) : (
                     <button 
-                      className="btn btn-primary" 
-                      style={{ marginRight: '0.5rem' }}
+                      className="btn btn-primary manage-btn" 
                       onClick={() => {
                         window.location.href = `/edit-draft/${draft.id}`;
                       }}
@@ -380,7 +377,7 @@ const ManageCaseStudies = () => {
                     </button>
                   )}
                   <button 
-                    className="btn btn-danger"
+                    className="btn btn-danger manage-btn"
                     onClick={async () => {
                       try {
                         await axios.delete(`/api/case-studies/drafts/${draft.id}`);
@@ -431,7 +428,6 @@ const ManageCaseStudies = () => {
                 <div style={{ flex: 1 }}>
                   <h3 className="card-title" style={{ margin: 0 }}>
                     {caseStudy.title}
-                    {caseStudy.version && <span style={{ fontSize: '0.8em', color: '#666', marginLeft: '0.5rem' }}>v{caseStudy.version.split('.')[0]}</span>}
                   </h3>
                   <div style={{ marginTop: '0.5rem' }}>
                     <span className="status-badge" style={{ 
@@ -451,16 +447,14 @@ const ManageCaseStudies = () => {
                   {caseStudy.status === 'under_review' && (
                     <>
                       <button 
-                        className="btn btn-secondary"
+                        className="btn btn-secondary manage-btn"
                         onClick={() => navigate(`/create?incorporateFeedback=${caseStudy.folderName}`)}
-                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                       >
                         Incorporate Feedback
                       </button>
                       <button 
-                        className="btn btn-info"
+                        className="btn btn-info manage-btn"
                         onClick={() => navigate(`/review/${caseStudy.folderName}`)}
-                        style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                       >
                         View
                       </button>
@@ -469,9 +463,8 @@ const ManageCaseStudies = () => {
                   
                   {(caseStudy.status === 'approved' || caseStudy.status === 'rejected' || caseStudy.status === 'published') && (
                     <button 
-                      className="btn btn-secondary"
+                      className="btn btn-secondary manage-btn"
                       onClick={() => navigate(`/review/${caseStudy.folderName}`)}
-                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                     >
                       View Review History
                     </button>
@@ -479,9 +472,8 @@ const ManageCaseStudies = () => {
                   
                   {caseStudy.status === 'approved' && (
                     <button 
-                      className="btn btn-primary"
+                      className="btn btn-primary manage-btn"
                       onClick={() => updateCaseStudyStatus(caseStudy.folderName, 'published')}
-                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                     >
                       Publish
                     </button>
@@ -490,8 +482,7 @@ const ManageCaseStudies = () => {
                   {/* Delete button for all case studies */}
                   <button 
                     onClick={() => setDeleteConfirm(caseStudy)} 
-                    className="btn btn-danger"
-                    style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                    className="btn btn-danger manage-btn"
                   >
                     Delete
                   </button>
@@ -520,5 +511,18 @@ const ManageCaseStudies = () => {
     </div>
   );
 };
+
+// Add CSS for consistent button sizing
+const style = document.createElement('style');
+style.textContent = `
+  .manage-btn {
+    min-width: 120px !important;
+    padding: 0.5rem 1rem !important;
+    font-size: 0.875rem !important;
+    margin-right: 0.5rem !important;
+    text-align: center !important;
+  }
+`;
+document.head.appendChild(style);
 
 export default ManageCaseStudies;
