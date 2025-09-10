@@ -237,33 +237,35 @@ const ManageLabels = () => {
 
       {/* Delete Confirmation Dialog */}
       {deleteConfirm && (
-        <div className="card" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeaa7', marginBottom: '2rem' }}>
-          <h3 style={{ color: '#856404' }}>Confirm Deletion</h3>
-          <p>Are you sure you want to delete {deleteConfirm.type === 'category' ? `category "${deleteConfirm.categoryName}"` : `value "${typeof deleteConfirm.value === 'object' ? deleteConfirm.value.name || JSON.stringify(deleteConfirm.value) : deleteConfirm.value}"`}?</p>
-          {deleteConfirm.type === 'category' && (
-            <p style={{ fontSize: '0.9rem', color: '#666' }}>
-              This will delete the entire category and all its values. This action cannot be undone.
-            </p>
-          )}
-          <div className="card-actions">
-            <button 
-              onClick={() => {
-                if (deleteConfirm.type === 'category') {
-                  handleDeleteCategory(deleteConfirm.categoryName);
-                } else {
-                  handleDeleteValue(deleteConfirm.categoryName, deleteConfirm.valueIndex);
-                }
-              }} 
-              className="btn btn-danger"
-            >
-              Yes, Delete
-            </button>
-            <button 
-              onClick={() => setDeleteConfirm(null)} 
-              className="btn btn-secondary"
-            >
-              Cancel
-            </button>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Confirm Deletion</h3>
+            <p>Are you sure you want to delete {deleteConfirm.type === 'category' ? `category "${deleteConfirm.categoryName}"` : `value "${typeof deleteConfirm.value === 'object' ? deleteConfirm.value.name || JSON.stringify(deleteConfirm.value) : deleteConfirm.value}"`}?</p>
+            {deleteConfirm.type === 'category' && (
+              <p style={{ fontSize: '0.9rem', color: '#666' }}>
+                This will delete the entire category and all its values. This action cannot be undone.
+              </p>
+            )}
+            <div className="modal-actions">
+              <button 
+                onClick={() => {
+                  if (deleteConfirm.type === 'category') {
+                    handleDeleteCategory(deleteConfirm.categoryName);
+                  } else {
+                    handleDeleteValue(deleteConfirm.categoryName, deleteConfirm.valueIndex);
+                  }
+                }} 
+                className="btn btn-danger"
+              >
+                Yes, Delete
+              </button>
+              <button 
+                onClick={() => setDeleteConfirm(null)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -516,5 +518,41 @@ const ManageLabels = () => {
     </div>
   );
 };
+
+// Add modal CSS
+const style = document.createElement('style');
+style.textContent = `
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  .modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+  }
+`;
+document.head.appendChild(style);
 
 export default ManageLabels;

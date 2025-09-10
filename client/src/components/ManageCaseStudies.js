@@ -12,6 +12,7 @@ const ManageCaseStudies = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteDraftConfirm, setDeleteDraftConfirm] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
   
   // Pagination states
@@ -121,6 +122,21 @@ const ManageCaseStudies = () => {
     } catch (err) {
       console.error('Error deleting case study:', err);
       setError('Failed to delete case study: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteDraft = async (draftId) => {
+    try {
+      setError('');
+      setSuccess('');
+      
+      await axios.delete(`/api/case-studies/drafts/${draftId}`);
+      setSuccess('Draft deleted successfully');
+      fetchCaseStudies();
+      setDeleteDraftConfirm(null);
+    } catch (err) {
+      console.error('Error deleting draft:', err);
+      setError('Failed to delete draft');
     }
   };
 
@@ -291,25 +307,53 @@ const ManageCaseStudies = () => {
       </div>
 
       {deleteConfirm && (
-        <div className="card" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffeaa7' }}>
-          <h3 style={{ color: '#856404' }}>Confirm Deletion</h3>
-          <p>Are you sure you want to delete "{deleteConfirm.title}"?</p>
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            This action cannot be undone. The case study will be permanently removed from storage.
-          </p>
-          <div className="card-actions">
-            <button 
-              onClick={() => handleDelete(deleteConfirm.folderName)} 
-              className="btn btn-danger"
-            >
-              Yes, Delete
-            </button>
-            <button 
-              onClick={() => setDeleteConfirm(null)} 
-              className="btn btn-secondary"
-            >
-              Cancel
-            </button>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Confirm Deletion</h3>
+            <p>Are you sure you want to delete "{deleteConfirm.title}"?</p>
+            <p style={{ fontSize: '0.9rem', color: '#666' }}>
+              This action cannot be undone. The case study will be permanently removed from storage.
+            </p>
+            <div className="modal-actions">
+              <button 
+                onClick={() => handleDelete(deleteConfirm.folderName)} 
+                className="btn btn-danger"
+              >
+                Yes, Delete
+              </button>
+              <button 
+                onClick={() => setDeleteConfirm(null)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteDraftConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Confirm Draft Deletion</h3>
+            <p>Are you sure you want to delete the draft "{deleteDraftConfirm.title}"?</p>
+            <p style={{ fontSize: '0.9rem', color: '#666' }}>
+              This action cannot be undone. The draft will be permanently removed.
+            </p>
+            <div className="modal-actions">
+              <button 
+                onClick={() => handleDeleteDraft(deleteDraftConfirm.id)} 
+                className="btn btn-danger"
+              >
+                Yes, Delete
+              </button>
+              <button 
+                onClick={() => setDeleteDraftConfirm(null)} 
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -378,15 +422,7 @@ const ManageCaseStudies = () => {
                   )}
                   <button 
                     className="btn btn-danger manage-btn"
-                    onClick={async () => {
-                      try {
-                        await axios.delete(`/api/case-studies/drafts/${draft.id}`);
-                        setSuccess('Draft deleted successfully');
-                        fetchCaseStudies();
-                      } catch (err) {
-                        setError('Failed to delete draft');
-                      }
-                    }}
+                    onClick={() => setDeleteDraftConfirm(draft)}
                   >
                     Delete
                   </button>
@@ -512,9 +548,45 @@ const ManageCaseStudies = () => {
   );
 };
 
-// Add CSS for consistent button sizing
+// Add CSS for consistent button sizing and modal
 const style = document.createElement('style');
 style.textContent = `
+  .manage-btn {
+    min-width: 80px;
+    margin: 0 5px;
+  }
+  
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  .modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+  }
+  
   .manage-btn {
     min-width: 120px !important;
     padding: 0.5rem 1rem !important;
