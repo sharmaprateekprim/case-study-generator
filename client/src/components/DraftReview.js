@@ -53,6 +53,8 @@ const DraftReview = () => {
   const navigate = useNavigate();
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [discussionComments, setDiscussionComments] = useState([]);
@@ -113,6 +115,7 @@ const DraftReview = () => {
 
   const approveDraft = async () => {
     try {
+      setApproving(true);
       const response = await axios.post(`/api/case-studies/drafts/${draftId}/approve`);
       if (response.data.success) {
         setSuccess('Draft approved and converted to case study');
@@ -122,11 +125,14 @@ const DraftReview = () => {
       }
     } catch (err) {
       setError('Failed to approve draft');
+    } finally {
+      setApproving(false);
     }
   };
 
   const rejectDraft = async () => {
     try {
+      setRejecting(true);
       const response = await axios.post(`/api/case-studies/drafts/${draftId}/reject`);
       if (response.data.success) {
         setSuccess('Draft rejected and converted to case study');
@@ -136,6 +142,8 @@ const DraftReview = () => {
       }
     } catch (err) {
       setError('Failed to reject draft');
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -507,14 +515,16 @@ const DraftReview = () => {
             <button 
               className="btn btn-success"
               onClick={approveDraft}
+              disabled={approving || rejecting}
             >
-              Approved
+              {approving ? 'Approving...' : 'Approved'}
             </button>
             <button 
               className="btn btn-danger"
               onClick={rejectDraft}
+              disabled={approving || rejecting}
             >
-              Rejected
+              {rejecting ? 'Rejecting...' : 'Rejected'}
             </button>
           </div>
         )}
