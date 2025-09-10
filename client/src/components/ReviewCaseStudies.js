@@ -198,6 +198,7 @@ const ReviewCaseStudies = () => {
                 {caseStudy.questionnaire.basicInfo?.duration && <p><strong>Project Duration:</strong> {caseStudy.questionnaire.basicInfo.duration}</p>}
                 {caseStudy.questionnaire.basicInfo?.teamSize && <p><strong>Team Size:</strong> {caseStudy.questionnaire.basicInfo.teamSize}</p>}
                 {caseStudy.questionnaire.basicInfo?.pointOfContact && <p><strong>Point of Contact(s):</strong> {caseStudy.questionnaire.basicInfo.pointOfContact}</p>}
+                {caseStudy.questionnaire.basicInfo?.submittedBy && <p><strong>Submitted By:</strong> {caseStudy.questionnaire.basicInfo.submittedBy}</p>}
                 {caseStudy.questionnaire.basicInfo?.customer && <p><strong>Customer:</strong> {caseStudy.questionnaire.basicInfo.customer}</p>}
                 {caseStudy.questionnaire.basicInfo?.industry && <p><strong>Industry:</strong> {caseStudy.questionnaire.basicInfo.industry}</p>}
                 {caseStudy.questionnaire.basicInfo?.useCase && <p><strong>Use Case:</strong> {caseStudy.questionnaire.basicInfo.useCase}</p>}
@@ -241,7 +242,7 @@ const ReviewCaseStudies = () => {
               {caseStudy.questionnaire.content?.executiveSummary && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Executive Summary</h4>
-                  <p>{caseStudy.questionnaire.content.executiveSummary}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire.content.executiveSummary}</p>
                 </div>
               )}
 
@@ -290,21 +291,21 @@ const ReviewCaseStudies = () => {
               {(caseStudy.questionnaire.content?.overview || caseStudy.overview) && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Overview</h4>
-                  <p>{caseStudy.questionnaire.content?.overview || caseStudy.overview}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire.content?.overview || caseStudy.overview}</p>
                 </div>
               )}
               
               {caseStudy.questionnaire.content?.challenge && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Challenge</h4>
-                  <p>{caseStudy.questionnaire.content.challenge}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire.content.challenge}</p>
                 </div>
               )}
               
               {caseStudy.questionnaire.content?.solution && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Solution</h4>
-                  <p>{caseStudy.questionnaire.content.solution}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire.content.solution}</p>
                 </div>
               )}
 
@@ -358,7 +359,7 @@ const ReviewCaseStudies = () => {
                 caseStudy.content?.implementation) && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Implementation</h4>
-                  <p>{caseStudy.questionnaire?.content?.implementation || 
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire?.content?.implementation || 
                       caseStudy.implementation || 
                       caseStudy.questionnaire?.implementation ||
                       caseStudy.content?.implementation}</p>
@@ -411,14 +412,14 @@ const ReviewCaseStudies = () => {
               {(caseStudy.questionnaire?.content?.results || caseStudy.results) && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Results</h4>
-                  <p>{caseStudy.questionnaire?.content?.results || caseStudy.results}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire?.content?.results || caseStudy.results}</p>
                 </div>
               )}
               
               {(caseStudy.questionnaire?.content?.lessonsLearned || caseStudy.lessonsLearned) && (
                 <div style={{ marginBottom: '1.5rem' }}>
                   <h4>Lessons Learned</h4>
-                  <p>{caseStudy.questionnaire?.content?.lessonsLearned || caseStudy.lessonsLearned}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{caseStudy.questionnaire?.content?.lessonsLearned || caseStudy.lessonsLearned}</p>
                 </div>
               )}
               

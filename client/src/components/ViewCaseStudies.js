@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FormattedText, formatTextInline } from '../utils/textFormatter';
 
 const PAGE_SIZE = 10; // Configurable page size
 
@@ -517,12 +516,12 @@ const ViewCaseStudies = () => {
                     });
                     
                     if (executiveSummary) {
+                      const truncatedText = executiveSummary.length > 200 ? 
+                        executiveSummary.substring(0, 200) + '...' : 
+                        executiveSummary;
                       return (
-                        <div style={{ marginBottom: '1rem', color: '#666', fontSize: '0.95rem', lineHeight: '1.4' }}>
-                          <FormattedText 
-                            text={executiveSummary} 
-                            maxLength={200} 
-                          />
+                        <div style={{ marginBottom: '1rem', color: '#666', fontSize: '0.95rem', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
+                          {truncatedText}
                         </div>
                       );
                     }

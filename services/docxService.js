@@ -3,6 +3,39 @@ const fs = require('fs');
 const path = require('path');
 
 class DocxService {
+  // Helper function to convert text with line breaks into Word paragraphs
+  createFormattedTextParagraphs(text, fontSize = 22, fontName = "Calibri") {
+    if (!text) return [];
+    
+    const lines = text.split('\n');
+    const paragraphs = [];
+    
+    for (const line of lines) {
+      if (line.trim() === '') {
+        // Empty line - add spacing
+        paragraphs.push(new Paragraph({
+          children: [new TextRun({ text: "", font: fontName, size: fontSize })],
+          spacing: { after: 100 }
+        }));
+      } else {
+        // Regular line with content
+        paragraphs.push(new Paragraph({
+          children: [
+            new TextRun({
+              text: line,
+              font: fontName,
+              size: fontSize,
+              color: "000000"
+            })
+          ],
+          style: "Normal"
+        }));
+      }
+    }
+    
+    return paragraphs;
+  }
+
   async generateCaseStudyDocx(questionnaire, labels = {}, caseStudyFolder = '', architectureDiagrams = []) {
     console.log('Starting DOCX case study generation...');
     
@@ -254,17 +287,7 @@ class DocxService {
                 style: "Heading1"
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.executiveSummary,
-                    font: "Calibri",
-                    size: 22,
-                    color: "000000"
-                  }),
-                ],
-                style: "Normal"
-              })
+              ...this.createFormattedTextParagraphs(content.executiveSummary)
             ] : []),
 
             // Key Metrics (only if metrics exist)
@@ -305,17 +328,7 @@ class DocxService {
                 style: "Heading1"
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.overview,
-                    font: "Calibri",
-                    size: 22,
-                    color: "000000"
-                  }),
-                ],
-                style: "Normal"
-              })
+              ...this.createFormattedTextParagraphs(content.overview)
             ] : []),
 
             // Challenges
@@ -332,17 +345,7 @@ class DocxService {
               style: "Heading1"
             }),
             
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: content.challenge || 'Challenge description not provided.',
-                  font: "Calibri",
-                  size: 22,
-                  color: "000000"
-                }),
-              ],
-              style: "Normal"
-            }),
+            ...this.createFormattedTextParagraphs(content.challenge || 'Challenge description not provided.'),
 
             // Solution Approach
             new Paragraph({
@@ -358,17 +361,7 @@ class DocxService {
               style: "Heading1"
             }),
             
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: content.solution || 'Solution description not provided.',
-                  font: "Calibri",
-                  size: 22,
-                  color: "000000"
-                }),
-              ],
-              style: "Normal"
-            }),
+            ...this.createFormattedTextParagraphs(content.solution || 'Solution description not provided.'),
 
             // Architecture Diagrams (embedded)
             ...(await this.createArchitectureDiagramsParagraphs(architectureDiagrams || content.architectureDiagrams, caseStudyFolder)),
@@ -406,17 +399,7 @@ class DocxService {
               style: "Heading1"
             }),
             
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: content.results || 'Results description not provided.',
-                  font: "Calibri",
-                  size: 22,
-                  color: "000000"
-                }),
-              ],
-              style: "Normal"
-            }),
+            ...this.createFormattedTextParagraphs(content.results || 'Results description not provided.'),
 
             // Lessons Learnt
             ...(content.lessonsLearned ? [
@@ -433,17 +416,7 @@ class DocxService {
                 style: "Heading1"
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.lessonsLearned,
-                    font: "Calibri",
-                    size: 22,
-                    color: "000000"
-                  }),
-                ],
-                style: "Normal"
-              })
+              ...this.createFormattedTextParagraphs(content.lessonsLearned)
             ] : []),
 
             // Conclusion
@@ -461,17 +434,7 @@ class DocxService {
                 style: "Heading1"
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.conclusion,
-                    font: "Calibri",
-                    size: 22,
-                    color: "000000"
-                  }),
-                ],
-                style: "Normal"
-              })
+              ...this.createFormattedTextParagraphs(content.conclusion)
             ] : [])
           ]
         }]
@@ -758,7 +721,8 @@ class DocxService {
     const backgroundItems = [
       { label: "Project Duration", value: basicInfo.duration },
       { label: "Team Size", value: basicInfo.teamSize },
-      { label: "Point of Contact(s)", value: basicInfo.pointOfContact }
+      { label: "Point of Contact(s)", value: basicInfo.pointOfContact },
+      { label: "Submitted By", value: basicInfo.submittedBy }
     ];
 
     const paragraphs = backgroundItems
@@ -962,19 +926,7 @@ class DocxService {
 
       // Workstream description
       if (workstream.description) {
-        paragraphs.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: workstream.description,
-                font: "Calibri",
-                size: 22,
-                color: "000000"
-              }),
-            ],
-            style: "Normal"
-          })
-        );
+        paragraphs.push(...this.createFormattedTextParagraphs(workstream.description));
       }
 
       // Workstream diagrams (embedded)
@@ -1215,18 +1167,7 @@ class DocxService {
                 spacing: { before: 400, after: 200 }
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.overview,
-                    font: "Calibri",
-                    size: 20,
-                    color: "000000"
-                  }),
-                ],
-                alignment: AlignmentType.LEFT,
-                spacing: { after: 200 }
-              })
+              ...this.createFormattedTextParagraphs(content.overview, 20)
             ] : []),
 
             // Challenges Section
@@ -1245,18 +1186,7 @@ class DocxService {
                 spacing: { before: 400, after: 200 }
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.challenge,
-                    font: "Calibri",
-                    size: 20,
-                    color: "000000"
-                  }),
-                ],
-                alignment: AlignmentType.LEFT,
-                spacing: { after: 200 }
-              })
+              ...this.createFormattedTextParagraphs(content.challenge, 20)
             ] : []),
 
             // Solution Section
@@ -1275,18 +1205,7 @@ class DocxService {
                 spacing: { before: 400, after: 200 }
               }),
               
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.solution,
-                    font: "Calibri",
-                    size: 20,
-                    color: "000000"
-                  }),
-                ],
-                alignment: AlignmentType.LEFT,
-                spacing: { after: 200 }
-              })
+              ...this.createFormattedTextParagraphs(content.solution, 20)
             ] : []),
 
             // Results Section (includes key metrics)
@@ -1305,20 +1224,9 @@ class DocxService {
             }),
 
             // Results content
-            ...(content.results ? [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: content.results,
-                    font: "Calibri",
-                    size: 20,
-                    color: "000000"
-                  }),
-                ],
-                alignment: AlignmentType.LEFT,
-                spacing: { after: 200 }
-              })
-            ] : []),
+            ...(content.results ? 
+              this.createFormattedTextParagraphs(content.results, 20)
+            : []),
 
             // Key Metrics (compact format for one-pager)
             ...this.createOnePagerCompactMetricsParagraphs(metrics)
@@ -1341,7 +1249,8 @@ class DocxService {
     const backgroundItems = [
       { label: "Project Duration", value: basicInfo.duration },
       { label: "Team Size", value: basicInfo.teamSize },
-      { label: "Point of Contact(s)", value: basicInfo.pointOfContact }
+      { label: "Point of Contact(s)", value: basicInfo.pointOfContact },
+      { label: "Submitted By", value: basicInfo.submittedBy }
     ];
 
     const paragraphs = backgroundItems

@@ -1237,6 +1237,7 @@ router.post('/drafts/:draftId/approve', async (req, res) => {
         basicInfo: {
           title: draft.data.title,
           pointOfContact: draft.data.pointOfContact,
+          submittedBy: draft.data.submittedBy,
           duration: draft.data.duration,
           teamSize: draft.data.teamSize,
           customer: draft.data.customer,
@@ -1360,6 +1361,7 @@ router.post('/drafts/:draftId/reject', async (req, res) => {
         basicInfo: {
           title: draft.data.title,
           pointOfContact: draft.data.pointOfContact,
+          submittedBy: draft.data.submittedBy,
           duration: draft.data.duration,
           teamSize: draft.data.teamSize,
           customer: draft.data.customer,
@@ -1526,6 +1528,7 @@ router.post('/:folderName/update-feedback', upload.fields([
       basicInfo: {
         title: caseStudyData.title,
         pointOfContact: caseStudyData.pointOfContact,
+        submittedBy: caseStudyData.submittedBy,
         duration: caseStudyData.duration,
         teamSize: caseStudyData.teamSize,
         customer: caseStudyData.customer,
@@ -1842,6 +1845,7 @@ router.get('/', async (req, res) => {
         const searchableText = [
           cs.title,
           cs.questionnaire?.basicInfo?.pointOfContact,
+          cs.questionnaire?.basicInfo?.submittedBy,
           cs.questionnaire?.content?.challenge,
           cs.questionnaire?.content?.solution,
           cs.questionnaire?.content?.results

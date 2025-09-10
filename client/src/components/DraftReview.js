@@ -198,6 +198,7 @@ const DraftReview = () => {
             {data.duration && <p><strong>Project Duration:</strong> {data.duration}</p>}
             {data.teamSize && <p><strong>Team Size:</strong> {data.teamSize}</p>}
             {data.pointOfContact && <p><strong>Point of Contact(s):</strong> {data.pointOfContact}</p>}
+            {data.submittedBy && <p><strong>Submitted By:</strong> {data.submittedBy}</p>}
             {data.customer && <p><strong>Customer:</strong> {data.customer}</p>}
             {data.industry && <p><strong>Industry:</strong> {data.industry}</p>}
             {data.useCase && <p><strong>Use Case:</strong> {data.useCase}</p>}
@@ -242,7 +243,7 @@ const DraftReview = () => {
           {data.executiveSummary && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Executive Summary</h4>
-              <p>{data.executiveSummary}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.executiveSummary}</p>
             </div>
           )}
 
@@ -290,28 +291,28 @@ const DraftReview = () => {
           {data.overview && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Overview</h4>
-              <p>{data.overview}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.overview}</p>
             </div>
           )}
           
           {data.challenge && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Challenge</h4>
-              <p>{data.challenge}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.challenge}</p>
             </div>
           )}
           
           {data.solution && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Solution</h4>
-              <p>{data.solution}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.solution}</p>
             </div>
           )}
           
           {data.implementation && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Implementation</h4>
-              <p>{data.implementation}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.implementation}</p>
             </div>
           )}
 
@@ -413,14 +414,14 @@ const DraftReview = () => {
           {data.results && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Results</h4>
-              <p>{data.results}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.results}</p>
             </div>
           )}
 
           {data.lessonsLearned && (
             <div style={{ marginBottom: '1.5rem' }}>
               <h4>Lessons Learned</h4>
-              <p>{data.lessonsLearned}</p>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{data.lessonsLearned}</p>
             </div>
           )}
 

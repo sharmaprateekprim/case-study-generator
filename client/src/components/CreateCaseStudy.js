@@ -15,6 +15,7 @@ const CreateCaseStudy = () => {
     duration: '',
     teamSize: '',
     pointOfContact: '',
+    submittedBy: '',
     overview: '',
     challenge: '',
     solution: '',
@@ -91,6 +92,7 @@ const CreateCaseStudy = () => {
           setFormData({
             title: q.basicInfo?.title || '',
             pointOfContact: q.basicInfo?.pointOfContact || '',
+            submittedBy: q.basicInfo?.submittedBy || '',
             duration: q.basicInfo?.duration || '',
             teamSize: q.basicInfo?.teamSize || '',
             customer: q.basicInfo?.customer || '',
@@ -176,6 +178,7 @@ const CreateCaseStudy = () => {
           duration: draftData.duration || draftData.data?.duration || '',
           teamSize: draftData.teamSize || draftData.data?.teamSize || '',
           pointOfContact: draftData.pointOfContact || draftData.data?.pointOfContact || '',
+          submittedBy: draftData.submittedBy || draftData.data?.submittedBy || '',
           overview: draftData.overview || '',
           challenge: draftData.challenge || '',
           solution: draftData.solution || '',
@@ -547,6 +550,7 @@ const CreateCaseStudy = () => {
           duration: '',
           teamSize: '',
           pointOfContact: '',
+          submittedBy: '',
           overview: '',
           challenge: '',
           solution: '',
@@ -806,14 +810,13 @@ const CreateCaseStudy = () => {
 
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="title">Case Study Title *</label>
+          <label htmlFor="title">Case Study Title</label>
           <input
             type="text"
             id="title"
             name="title"
             value={formData.title}
             onChange={handleInputChange}
-            required
             placeholder="Enter the case study title"
           />
         </div>
@@ -851,6 +854,18 @@ const CreateCaseStudy = () => {
             value={formData.pointOfContact}
             onChange={handleInputChange}
             placeholder="e.g., John Smith, Jane Doe (Project Manager)"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="submittedBy">Submitted By</label>
+          <input
+            type="text"
+            id="submittedBy"
+            name="submittedBy"
+            value={formData.submittedBy}
+            onChange={handleInputChange}
+            placeholder="e.g., John Smith (Solutions Architect)"
           />
         </div>
 
@@ -990,25 +1005,23 @@ const CreateCaseStudy = () => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="challenge">Challenge/Problem Statement *</label>
+          <label htmlFor="challenge">Challenge/Problem Statement</label>
           <textarea
             id="challenge"
             name="challenge"
             value={formData.challenge}
             onChange={handleInputChange}
-            required
             placeholder="Describe the main challenge or problem that needed to be solved"
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="solution">Solution Overview *</label>
+          <label htmlFor="solution">Solution Overview</label>
           <textarea
             id="solution"
             name="solution"
             value={formData.solution}
             onChange={handleInputChange}
-            required
             placeholder="Describe the solution that was implemented"
           />
         </div>
@@ -1191,13 +1204,12 @@ const CreateCaseStudy = () => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="results">Results/Outcomes *</label>
+          <label htmlFor="results">Results/Outcomes</label>
           <textarea
             id="results"
             name="results"
             value={formData.results}
             onChange={handleInputChange}
-            required
             placeholder="Describe the results and outcomes achieved"
           />
         </div>

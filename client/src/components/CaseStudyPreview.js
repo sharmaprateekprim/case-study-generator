@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { FormattedText } from '../utils/textFormatter';
 
 const CaseStudyPreview = () => {
   const { id } = useParams();
@@ -149,6 +148,9 @@ const CaseStudyPreview = () => {
             <div>
               <strong>Point of Contact(s):</strong> {caseStudy.questionnaire?.basicInfo?.pointOfContact || caseStudy.pointOfContact || 'N/A'}
             </div>
+            <div>
+              <strong>Submitted By:</strong> {caseStudy.questionnaire?.basicInfo?.submittedBy || caseStudy.submittedBy || 'N/A'}
+            </div>
           </div>
 
           {(caseStudy.performanceImprovement || caseStudy.costReduction || caseStudy.timeSavings || caseStudy.userSatisfaction) && (
@@ -174,8 +176,8 @@ const CaseStudyPreview = () => {
           {caseStudy.challenge && (
             <div style={{ marginTop: '1.5rem' }}>
               <strong>Challenge:</strong>
-              <div style={{ marginTop: '0.5rem', color: '#666' }}>
-                <FormattedText text={caseStudy.challenge} />
+              <div style={{ marginTop: '0.5rem', color: '#666', whiteSpace: 'pre-wrap' }}>
+                {caseStudy.challenge}
               </div>
             </div>
           )}
@@ -183,8 +185,8 @@ const CaseStudyPreview = () => {
           {caseStudy.solution && (
             <div style={{ marginTop: '1.5rem' }}>
               <strong>Solution:</strong>
-              <div style={{ marginTop: '0.5rem', color: '#666' }}>
-                <FormattedText text={caseStudy.solution} />
+              <div style={{ marginTop: '0.5rem', color: '#666', whiteSpace: 'pre-wrap' }}>
+                {caseStudy.solution}
               </div>
             </div>
           )}
@@ -192,8 +194,8 @@ const CaseStudyPreview = () => {
           {caseStudy.results && (
             <div style={{ marginTop: '1.5rem' }}>
               <strong>Results:</strong>
-              <div style={{ marginTop: '0.5rem', color: '#666' }}>
-                <FormattedText text={caseStudy.results} />
+              <div style={{ marginTop: '0.5rem', color: '#666', whiteSpace: 'pre-wrap' }}>
+                {caseStudy.results}
               </div>
             </div>
           )}
