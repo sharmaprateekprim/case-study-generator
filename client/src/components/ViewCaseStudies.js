@@ -20,7 +20,8 @@ const ViewCaseStudies = () => {
     objective: '',
     solution: '',
     methodology: '',
-    region: ''
+    region: '',
+    Circles: ''
   });
   const [availableLabels, setAvailableLabels] = useState({});
   
@@ -152,7 +153,8 @@ const ViewCaseStudies = () => {
       objective: '',
       solution: '',
       methodology: '',
-      region: ''
+      region: '',
+      Circles: ''
     });
     setCurrentPage(1);
   };

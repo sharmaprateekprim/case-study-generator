@@ -1813,6 +1813,7 @@ router.get('/', async (req, res) => {
       solution,
       methodology,
       region,
+      Circles,
       status = 'published' // Default to published only for browse functionality
     } = req.query;
 
@@ -1862,7 +1863,7 @@ router.get('/', async (req, res) => {
     }
 
     // Label filters
-    const labelFilters = { client, sector, projectType, technology, objective, solution, methodology, region };
+    const labelFilters = { client, sector, projectType, technology, objective, solution, methodology, region, Circles };
     Object.keys(labelFilters).forEach(filterKey => {
       const filterValue = labelFilters[filterKey];
       if (filterValue) {
