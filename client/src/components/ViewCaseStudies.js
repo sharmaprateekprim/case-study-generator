@@ -166,8 +166,8 @@ const ViewCaseStudies = () => {
 
   const handlePreview = async (caseStudy) => {
     try {
-      // Use absolute URL to backend to avoid React Router conflicts
-      const backendUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      // Use current window origin to work on any server
+      const backendUrl = process.env.REACT_APP_API_URL || window.location.origin;
       const previewUrl = `${backendUrl}/api/case-studies/preview/${caseStudy.folderName}/${caseStudy.fileName}`;
       
       console.log('Opening preview URL:', previewUrl);
