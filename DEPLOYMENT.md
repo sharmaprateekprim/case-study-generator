@@ -15,6 +15,7 @@
 
 2. **Connect to instance**:
 ```bash
+chmod 400 key-pair-name.pem
 ssh -i your-key.pem ubuntu@your-ec2-ip
 ```
 
